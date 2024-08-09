@@ -1,0 +1,129 @@
+import type { FastifyInstance } from "fastify";
+import type { Prisma, ProductionOperation } from "../../extensions/src";
+import type { StageType } from "../../frontend/src/assets/interfaces";
+export default function productionOperationRoutes(app: FastifyInstance) {
+  app.get("/production-operations", async (request, reply) => {
+    try {
+      const productionOperations =
+        await app.prisma.productionOperation.findMany();
+      reply.send(productionOperations);
+    } catch (error) {
+      reply.code(500).send({ error: "Internal Server Error" });
+    }
+  });
+
+  app.get("/production-operations/:id", async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const productionOperation =
+        await app.prisma.productionOperation.findUnique({
+          where: { id: parseInt(id) },
+        });
+      if (productionOperation) {
+        reply.send(productionOperation);
+      } else {
+        reply.code(404).send({ error: "productionOperation not found" });
+      }
+    } catch (error) {
+      console.log(error);
+
+      reply.code(500).send({ error: "Internal Server Error" });
+    }
+  });
+
+  app.post<{ Body: ProductionOperation }>(
+    "/production-operations-failed",
+    async (request, reply) => {
+      try {
+        const data = request.body;
+        const productionOperation = await app.prisma.productionOperation.create(
+          {
+            data: {
+              component: {
+                connect: { snComponent: data.componentId! },
+              },
+              stageType: data.stageType as StageType, // issue preProdaction assembly marking functionalTest verification package
+              status: data.status,
+              comment: data.comment,
+              productSN: data.productSN,
+              user: data.user,
+              usedComponents: data.usedComponents, // passed accepted defective shipped
+            },
+          }
+        );
+        reply.code(201).send(productionOperation);
+      } catch (error) {
+        console.log(error);
+        reply.code(500).send({ error: "Internal Server Error" });
+      }
+    }
+  );
+
+  app.post<{ Body: Prisma.ProductionOperationUncheckedCreateInput }>(
+    "/production-operations-passed",
+    async (request, reply) => {
+      try {
+        const data = request.body;
+
+        if (
+          !data.stageType ||
+          !data.productId ||
+          !data.status ||
+          !data.usedComponents ||
+          !data.user
+        ) {
+          throw new Error("Missing required fields");
+        }
+        console.log(data);
+
+        const productionOperation = await app.prisma.productionOperation.create(
+          {
+            data: {
+              productId: data.productId,
+              stageType: data.stageType,
+              status: data.status,
+              user: data.user,
+              usedComponents: data.usedComponents,
+            },
+          }
+        );
+        reply.code(201).send(productionOperation);
+      } catch (error) {
+        console.log(error);
+        reply.code(500).send({ error: "Internal Server Error" });
+      }
+    }
+  );
+
+  app.put<{
+    Params: { id: number };
+    Body: Prisma.ProductionOperationUncheckedUpdateInput;
+  }>("/production-operations/:id", async (request, reply) => {
+    try {
+      const { id } = request.params;
+      const data = request.body;
+      const productionOperation = await app.prisma.productionOperation.update({
+        where: { id },
+        data,
+      });
+      reply.send(productionOperation);
+    } catch (error) {
+      reply.code(500).send({ error: "Internal Server Error" });
+    }
+  });
+
+  app.delete("/production-operations/:id", async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      console.log(id, "IDIDIDIDIDIDIDIDIDIDID");
+
+      await app.prisma.productionOperation.delete({
+        where: { id: parseInt(id) },
+      });
+      reply.code(201).send({ message: "Object deleted" });
+    } catch (error) {
+      console.log(error);
+      reply.code(500).send({ error: "Internal Server Error" });
+    }
+  });
+}
