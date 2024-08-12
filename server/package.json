@@ -4,22 +4,20 @@
   "type": "module",
   "devDependencies": {
     "@types/bun": "latest",
-    "prisma": "^5.17.0"
+    "@types/ws": "^8.5.12",
+    "prisma": "^5.18.0"
   },
   "scripts": {
     "compile": "bun build --compile --minify --sourcemap ./index.ts --outfile myapp"
   },
   "peerDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.4.5"
   },
   "dependencies": {
     "@fastify/cors": "^9.0.1",
-    "@prisma/client": "^5.17.0",
-    "@types/bwip-js": "^3.2.3",
-    "bwip-js": "^4.4.0",
-    "docx": "^8.5.0",
-    "fastify": "^4.27.0",
-    "fastify-plugin": "^4.5.1",
-    "jsbarcode": "^3.11.6"
+    "@fastify/websocket": "^10.0.1",
+    "@prisma/client": "^5.18.0",
+    "fastify": "^4.28.1",
+    "fastify-plugin": "^4.5.1"
   }
 }

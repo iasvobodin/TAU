@@ -1138,8 +1138,8 @@ const test = {
 //     },
 //     take: 1,
 // })
-// await prisma.productionOperation.deleteMany();
-// await prisma.component.deleteMany();
-// await prisma.product.deleteMany();
-await prisma.user.deleteMany();
+await prisma.productionOperation.deleteMany();
+await prisma.component.deleteMany();
+await prisma.product.deleteMany();
+// await prisma.user.deleteMany();
 // console.log(`database seeded.`, await prisma.product.count());

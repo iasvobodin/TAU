@@ -105,14 +105,14 @@ const checkSerialNumber = ($event: Event) => {
 }
 
 onMounted(async () => {
-  try {
-    if (!usePartNumberComponents().partNumberComponents) {
-      await usePartNumberComponents().getPartNumberComponents()
-    }
-  } catch (error) {
-    console.error(error)
-    PartNumberExist.value = true
-  }
+  // try {
+  //   if (!usePartNumberComponents().partNumberComponents) {
+  //     await usePartNumberComponents().getPartNumberComponents()
+  //   }
+  // } catch (error) {
+  //   console.error(error)
+  //   PartNumberExist.value = true
+  // }
 })
 
 serialNumberStore.$subscribe(async (isDuplicate, state) => {

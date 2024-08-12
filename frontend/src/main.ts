@@ -27,3 +27,7 @@ init()
 events.on('windowClose', () => {
   app.exit()
 })
+events.on('clientConnect', (evt) => console.log(evt, 'clientConnect'))
+events.on('clientDisconnect', (evt) => console.log(evt, 'clientDisconnect'))
+events.on('appClientConnect', (evt) => console.log(evt, 'appClientConnect'))
+events.on('appClientDisconnect', (evt) => console.log(evt, 'appClientDisconnect'))

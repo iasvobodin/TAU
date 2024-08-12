@@ -6,3 +6,7 @@ export const fetchPNComponent = async (
 ): Promise<ApiResponse<PartNumberComponent>> => {
   return get<PartNumberComponent>(`http://localhost:3000/part-number-components/${partNumber}`)
 }
+
+export const getPNComponents = async (): Promise<ApiResponse<PartNumberComponent[]>> => {
+  return get<PartNumberComponent[]>(`http://localhost:3000/part-number-components`)
+}

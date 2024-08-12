@@ -11,35 +11,7 @@ const supplier = ref('')
 const invoice = ref('')
 const dataFromAddArticle: SerialNumberData[] = []
 const sendingStatus = ref('')
-const selectedPartNumber = ref('')
 
-// const fetchComponent = async (
-//   component: Prisma.ComponentUncheckedCreateInput
-// ): Promise<Prisma.ComponentUncheckedCreateInput | undefined> => {
-//   console.log(component)
-//   try {
-//     const response = await fetch('http://localhost:3000/components', {
-//       method: 'POST',
-//       headers: {
-//         'Content-Type': 'application/json'
-//       },
-//       body: JSON.stringify(component)
-//     })
-
-//     if (!response.ok) {
-//       const errorResponse = await response.json()
-//       throw new Error(errorResponse.error || 'Неизвестная ошибка')
-//     }
-
-//     const newComponent: Prisma.ComponentUncheckedCreateInput = await response.json()
-//     return newComponent
-//   } catch (error) {
-//     console.log(error, 'ошибка из fetchComponents')
-
-//     throw error
-//     // console.log(error, 'ошибка из fetchComponents');
-//   }
-// }
 const prepareDataToSend = (data: SerialNumberData[]) => {
   return data.map((e) => {
     return {

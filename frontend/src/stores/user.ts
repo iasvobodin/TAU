@@ -18,7 +18,13 @@ export const useUserStore = defineStore({
     },
     async getUserName() {
       try {
-        const userName = await os.execCommand('powershell $env:USERNAME')
+        // const userName = await os.execCommand('powershell $env:USERNAME')
+        const userName = await os.execCommand(
+          'powershell [System.Security.Principal.WindowsIdentity]::GetCurrent().Name'
+        )
+
+        console.log(userName.stdOut, 'userName.stdOut')
+
         const login = userName.stdOut.replace(/\r?\n|\r/g, '')
         console.log(`login: ${login}`)
         this.userName = login

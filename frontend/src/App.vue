@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, computed, watch } from 'vue'
+import { onMounted, reactive, ref, computed, watch, type Ref } from 'vue'
 import ToolBar from './components/ToolBar.vue'
 import { os, events, window as neuWindow } from '@neutralinojs/lib'
 import { useUserStore } from './stores/user'
@@ -13,9 +13,10 @@ const serverStats = reactive({
   port: 0,
   pid: 0
 })
-
+const ws:Ref<WebSocket|null> = ref(null)
 const userCheck = ref(false)
-
+const localServer:Ref<os.SpawnedProcess|null> = ref(null)
+const localServerPID:Ref<null|number> = ref(null)
 const userStore = useUserStore()
 const errorStore = useErrorStore()
 const userFullName = ref('')
@@ -27,86 +28,80 @@ userStore.$subscribe(async (userExist, state) => {
   }
 })
 
-watch(userCheck, (value) => {
-  console.log(value, 'userCheck')
-  if (!value) {
-    userStore.resetUserExist()
-    useUserStore().getUserName()
-  }
-})
+// const ws = new WebSocket('ws://localhost:3000/ws');
 
-const checkIfServerExist = async () => {
-  try {
-    const response = await fetch('http://localhost:3000/pid')
-    if (response.ok) {
-      const data = await response.json()
-      console.log('Сервер запущен port:3000 pid:', data.pid)
-      serverStats.pid = data.pid
-      serverStats.port = 3000
-      return data.pid
-    }
-  } catch (error) {
-    throw new Error('сервер не найден')
-  }
+
+
+const checkIfServerRunning = async () => {
+  console.log('checkIfServerRunning');
+
+
+  // try {
+  //   const response = await fetch('http://localhost:3000/pid')
+  //   if (response.ok) {
+  //     const data = await response.json()
+  //     localServerPID.value = data.pid as number
+  //     console.log('Сервер запущен port:3000 pid:', localServerPID.value)
+  //   }
+  // } catch (error) {
+  //   throw new Error('сервер не найден')
+  // }
 }
-const startLocalServer = async () => {
+const startServerProcess = async ()=>{
+  console.log('startServerProcess');
   try {
-    await checkIfServerExist()
-  } catch (error) {
-    //в первый раз всегда не работает
-    console.error(error)
-    console.error('запускаем сервер')
-    try {
-      serverStats.localServer = await os.spawnProcess(
+     localServer.value = await os.spawnProcess(
         'powershell ./server.exe',
         `${window.NL_CWD}/extensions`
       )
       //вроде запустили
-      console.log('Процесс запущен, ждём ответа от сервера PID: ' + serverStats.localServer.pid)
-      //проверяем ещё раз
-      await checkIfServerExist()
+      console.log('Сервер запущен')
     } catch (error) {
       console.error('Ошибка при запуске локального сервера:', error)
     }
-  }
 }
+// const startLocalServer = async () => {
+//   console.log('startLocalServer');
+  
+//   try {
+//     await checkIfServerRunning()
+//     console.log('wait');
+    
+//   } catch (error) {
+//     //в первый раз всегда не работает
+//     (async () => await startServerProcess())()
+
+//     console.error(error)
+
+//     console.log('запускаем сервер')
+//   }
+// }
 
 const killSpawnProcess = async (pid: number) => {
+  console.log('killSpawnProcess');
+  
   try {
     await os.execCommand(`taskkill /F /PID ${pid}`)
     console.log('Процесс завершён успешно.')
 
     let processes = await os.getSpawnedProcesses()
-    console.log(processes)
+    console.log(processes, 'active process')
   } catch (err) {
     console.error('Ошибка завершения процесса: ', err)
   }
 }
 
 const setEvents = () => {
-  events.on('windowClose', () => killSpawnProcess(serverStats.pid))
+  // events.on('windowClose', () => killSpawnProcess(localServerPID.value!))
+
   events.on('spawnedProcess', (evt) => {
-    if (serverStats.localServer.id === evt.detail.id && evt.detail.data.includes('PID')) {
-      serverStats.pid = JSON.parse(evt.detail.data).PID
-      serverStats.port = JSON.parse(evt.detail.data).PORT
+   //проверяем ответ сервера, нам нужен его PID
+    if (JSON.parse(evt.detail.data).PID) {
+      localServerPID.value = JSON.parse(evt.detail.data).PID
     }
   })
 }
-// const getUserName = async () => {
-//   try {
-//     let userName = await os.execCommand('powershell $env:USERNAME')
-//     console.log(`Получено имя пользователя: ${userName.stdOut}`)
 
-//     // Получаем экземпляр хранилища
-//     // Сохраняем имя пользователя в хранилище
-//     userStore.setUserName(userName.stdOut)
-
-//     return userName.stdOut
-//   } catch (err) {
-//     console.error('Ошибка при получении имени пользователя:', err)
-//   }
-// }
-// const pattern = /^\d+$/
 const pattern = /^[А-ЯЁ][а-яё]+ [А-ЯЁ]\.[А-ЯЁ]\.$/
 const setTitle = async () => {
   try {
@@ -132,12 +127,64 @@ const createUserFullName = async () => {
 }
 const isValid = computed(() => pattern.test(userFullName.value))
 
+
+watch(userCheck, (value) => {
+  console.log(value, 'userCheck')
+  if (!value) {
+    userStore.resetUserExist()
+    useUserStore().getUserName()
+  }
+})
+
+//только если сервер запущен
+watch(localServerPID, async (newvalue, oldvalue) => {
+  console.log('watch(localServerPID');
+  
+  if (newvalue) {
+    try {
+    await useUserStore().getUserName()
+    await setTitle()
+    await usePartNumberComponents().getPartNumberComponents()
+    } catch (error) {
+      console.log(error);
+      
+    }
+   
+  }
+})
+
+
+
+const connect = async () => {
+
+  const ws = new WebSocket('ws://localhost:3000/ws');
+
+  ws.onmessage = (event) => {
+    localServerPID.value = event.data.split(':')[1]
+    console.log('Сообщение от сервера:', event.data);
+  };
+
+  ws.onopen = () => {
+    console.log('WebSocket соединение установлено');
+    ws!.send('Привет, сервер!');
+  };
+
+  ws.onerror = (error) => {
+    console.error('Ошибка WebSocket:', error);
+  };
+
+  ws.onclose = async () => {
+    await startServerProcess();
+    console.log('WebSocket соединение закрыто. Попытка переподключения...');
+    setTimeout(connect, 5000);
+  };
+
+}
+
 onMounted(async () => {
   setEvents()
-  await startLocalServer()
-  await useUserStore().getUserName()
-  await setTitle()
-  await usePartNumberComponents().getPartNumberComponents()
+  connect()
+
 })
 </script>
 
