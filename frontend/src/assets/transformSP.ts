@@ -45,11 +45,14 @@ export const transformSpecification = async (sp: ProductAllPayload) => {
   }
 
   async function transformObject(sp: typeof specification) {
+    console.log(specification, 'specification')
+
     for (const key in sp) {
       if (sp.hasOwnProperty(key)) {
         const value = sp[key as keyof typeof specification]
 
         if (value.PN) {
+          console.log(value.PN, 'value.PN')
           const newKey = await fetchPNComponent(value.PN)
           a[newKey.data!.descriptionRU] = value
           productPartNumbers.push(value.PN)

@@ -44,7 +44,7 @@ export const createDocWithBarcodes = async (
     customHeight = '25mm'
   }
 
-  let data = await filesystem.readBinaryFile('./frontend/src/assets/EAC.png')
+  let data = await filesystem.readBinaryFile('./EAC.png')
 
   // Настройки для секции с кастомными размерами
   const sectionProperties = {

@@ -48,7 +48,7 @@
       "fullScreen": false,
       "alwaysOnTop": false,
       "icon": "/frontend/dist/TAU-min.png",
-      "enableInspector": false,
+      "enableInspector": true,
       "borderless": false,
       "maximize": false,
       "hidden": false,
@@ -81,7 +81,7 @@
   },
   "cli": {
     "binaryName": "TAU",
-    "resourcesPath": "/frontend/",
+    "resourcesPath": "/frontend/dist/",
     "extensionsPath": "/extensions/",
     "binaryVersion": "5.2.0",
     "clientVersion": "5.2.0",

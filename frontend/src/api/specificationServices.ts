@@ -7,3 +7,7 @@ export const fetchSpecification = async (
 ): Promise<ApiResponse<Specification>> => {
   return get<Specification>(`http://localhost:3000/specifications/${productMP}`)
 }
+
+export const fetchSpecifications = async (): Promise<ApiResponse<Specification[]>> => {
+  return get<Specification[]>(`http://localhost:3000/specifications`)
+}

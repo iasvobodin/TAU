@@ -75,13 +75,14 @@ const getProduct = async (cleared: boolean = true) => {
     if (cleared) {
       clear()
     }
+    console.log(productSerialNumber.value, 'productSerialNumber.value')
 
     const result = await fetchProduct(productSerialNumber.value)
 
     if (result.data) {
       console.log(result.data)
-      tsp.value = await transformSpecification(result.data)
       console.log(tsp.value)
+      tsp.value = await transformSpecification(result.data)
 
       product.information = {
         'SN изделия': result.data.snProduct,
@@ -239,7 +240,7 @@ const handleButtonClick = (step: number) => {
     </v-card>
   </v-dialog>
 
-  <!-- <div>
+  <div>
     <v-btn
       v-for="button in buttons"
       :key="button.step"
@@ -248,7 +249,7 @@ const handleButtonClick = (step: number) => {
     >
       {{ button.label }}
     </v-btn>
-  </div> -->
+  </div>
 </template>
 
 <style>

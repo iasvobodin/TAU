@@ -3,6 +3,7 @@ import { shallowRef, ref } from 'vue'
 import InputControl from './views/InputControl.vue'
 import PreProduction from './views/PreProduction.vue'
 import AssemblyView from './views/AssemblyView.vue'
+import DevView from './views/DevView.vue'
 
 const current = shallowRef(InputControl)
 const tab = ref(null)
@@ -13,6 +14,7 @@ const tab = ref(null)
     <v-tab :value="InputControl">Входной контроль</v-tab>
     <v-tab :value="PreProduction">Подготовка производства</v-tab>
     <v-tab :value="AssemblyView">Сборка</v-tab>
+    <v-tab :value="DevView">Отладка</v-tab>
   </v-tabs>
   <div class="container">
     <!-- <KeepAlive> -->

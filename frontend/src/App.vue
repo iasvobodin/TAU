@@ -89,13 +89,13 @@ const killSpawnProcess = async (pid: number) => {
 }
 
 const setEvents = () => {
-  // events.on('windowClose', () => killSpawnProcess(localServerPID.value!))
+  events.on('windowClose', () => killSpawnProcess(localServerPID.value!))
 
   events.on('spawnedProcess', (evt) => {
-    console.log(evt)
+    // console.log(evt)
 
     //проверяем ответ сервера, нам нужен его PID
-    if (JSON.parse(evt.detail.data).PID) {
+    if (typeof evt.detail.data === 'object' && JSON.parse(evt.detail.data).PID) {
       localServerPID.value = JSON.parse(evt.detail.data).PID
     }
   })

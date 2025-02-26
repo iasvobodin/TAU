@@ -5,6 +5,9 @@ import { useSerialNumberStore } from '../../stores/serialNumberStore'
 import type { SerialNumberData } from '@/assets/interfaces'
 import { Icon, os } from '@neutralinojs/lib'
 import { useErrorStore } from '@/stores/errorStore'
+import { fetchSpecifications } from '@/api/specificationServices'
+import { createDocWithBarcodes } from '@/assets/generateBarcodeV2'
+import type { ModulesType } from '@/assets/interfaces'
 const props = defineProps({
   invoice: {
     type: String,
@@ -30,7 +33,7 @@ const editedIndex = ref(-1)
 const PartNumberExist = ref(false)
 const SerialNumber = ref<null | number>(null)
 const selectedPartNumber = ref('')
-const pattern = /^\d+$/
+const pattern = /^\d{8}(-\d{2})?$/
 
 const headers = reactive([
   { title: 'Серийный номер', key: 'name', width: '20%', align: 'center' as const },
@@ -87,21 +90,62 @@ const emitData = () => {
 
 const checkSerialNumber = ($event: Event) => {
   const target = $event.target as HTMLTextAreaElement
-  if (target.value.length === 8 && pattern.test(target.value)) {
-    if (!props.invoice || !props.supplier) {
-      errorStore.addError('Необходимо заполнить все поля')
-      setTimeout(errorStore.removeError, 5000)
+  {
+    // if ((target.value.length === 8 || target.value.length === 11) && pattern.test(target.value)) {
+      if (!props.invoice || !props.supplier) {
+        errorStore.addError('Необходимо заполнить все поля')
+        setTimeout(errorStore.removeError, 5000)
+        SerialNumber.value = null
+      }
+      SerialNumber.value &&
+        serialNumberStore.addSerialNumber({
+          name: target.value,
+          partNumber: selectedPartNumber.value.split(' ')[0],
+          invoice: props.invoice,
+          supplier: props.supplier
+        })
       SerialNumber.value = null
-    }
-    SerialNumber.value &&
-      serialNumberStore.addSerialNumber({
-        name: target.value,
-        partNumber: selectedPartNumber.value.split(' ')[0],
-        invoice: props.invoice,
-        supplier: props.supplier
-      })
-    SerialNumber.value = null
+    // }
   }
+}
+
+type Barcodes = {
+  barcode: string
+  productName: string
+  partNumber: string
+  type: ModulesType
+}
+
+const tryToPrint = async () => {
+  const result = await fetchSpecifications()
+
+  const results = <Array<Barcodes>>[]
+console.log(result.data,'result.data');
+
+  result.data?.forEach((j) => {
+    serialNumberStore.sNumbers.forEach((e) => {
+      if (j.electronicBoard1 === e.partNumber || j.electronicBoard2 === e.partNumber) {
+        console.log(j.productName,'j.productName');
+        
+        results.push({
+          barcode:
+            j.type === 'Modules'
+              ? //ПОТОМ ПЕРЕДЕЛАТЬ!!!!!!
+                `${e.name.endsWith('-01') || e.name.endsWith('-02') ? e.name.slice(0, -3) : e.name}`
+              : e.name.endsWith('-01') || e.name.endsWith('-02')
+                ? e.name.slice(0, -3)
+                : e.name,
+          partNumber: j.productMP,
+          productName: j.productName,
+          type: j.type as ModulesType
+        })
+      }
+    })
+  })
+
+  console.log(results)
+
+  await createDocWithBarcodes(results)
 }
 
 onMounted(async () => {
@@ -157,16 +201,17 @@ serialNumberStore.$subscribe(async (isDuplicate, state) => {
           density="compact"
           clearable
           :disabled="!selectedPartNumber"
-          @input="checkSerialNumber"
+          @keyup.enter="checkSerialNumber"
           v-model="SerialNumber"
           :focused="true"
-          label="SN 8 цифр"
+          label="SN"
           variant="solo"
-          maxlength="8"
-          :rules="[(value) => pattern.test(value) || 'Только цифры']"
+          maxlength="13"
         ></v-text-field>
       </v-col>
     </v-row>
+    <!-- :rules="[(value) => pattern.test(value) || 'Только цифры']" -->
+
   </v-container>
   <teleport to="body"> </teleport>
   <v-data-table-virtual
@@ -203,6 +248,7 @@ serialNumberStore.$subscribe(async (isDuplicate, state) => {
           block
           >Добавить</v-btn
         >
+        <v-btn color="yellow-lighten-3" @click="tryToPrint">Баркоды</v-btn>
       </v-col>
 
       <!-- <v-col cols="12" md="6" sm="6">

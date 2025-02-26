@@ -26,7 +26,7 @@ const specification: Sp = reactive({
   serialNumbers: null
 })
 
-const pattern = /^M[PS]\d{4}X1-[A-Z]{2}1_\d+$/
+const pattern = /^M[PS]\d{4}X1-[A-Z]{2}[123]_\d+$/
 // /^M[PS]\d{4}X1-[A-Z]{2}1_\d+$/
 const prepareSpecification = async () => {
   if (pattern.test(specification_qty.value)) {
@@ -59,6 +59,8 @@ const generateSN = async () => {
 }
 const saveDocument = async () => {
   if (specification.serialNumbers) {
+    console.log(specification.serialNumbers)
+
     try {
       await createDocWithBarcodes(
         specification.serialNumbers,
@@ -67,18 +69,20 @@ const saveDocument = async () => {
         specification.sp!.type as ModulesType
       )
       //создаём изделия в базе
-      specification.serialNumbers &&
-        specification.serialNumbers.forEach(async (e) => {
+      if (specification.serialNumbers) {
+        for (const sn of specification.serialNumbers) {
           try {
             await createProduct({
-              snProduct: e,
+              snProduct: sn,
               specificationProductMP: specification.spPartNumber!
             })
           } catch (error) {
             console.log(error)
           }
-          console.log(specification.spPartNumber!, e)
-        })
+          console.log(sn)
+        }
+      }
+
       clearState()
     } catch (error) {
       console.log(error, 'и вот тут тоже ошибка')

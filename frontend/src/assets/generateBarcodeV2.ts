@@ -1,14 +1,5 @@
-// const bord: IBorderOptions = { style: 'none', size: 0, color: 'FFFFFF' }
-// const borders: ITableBordersOptions = {
-//   top: bord,
-//   bottom: bord,
-//   left: bord,
-//   right: bord,
-//   insideHorizontal: bord,
-//   insideVertical: bord
-// }
-
 import bwipjs from 'bwip-js'
+import imgUrl from './EAC.png'
 import {
   Document,
   Packer,
@@ -41,14 +32,23 @@ const generateBarcodeDataUrl = (data: string): string => {
     throw error
   }
 }
-
-export const createDocWithBarcodes = async (
-  barcodes: string[],
-  productName: string,
-  partNumber: string,
+type Barcodes = {
+  barcode: string
+  productName: string
+  partNumber: string
   type: ModulesType
-) => {
-  const imageEac = await filesystem.readBinaryFile('./frontend/src/assets/EAC.png')
+}[]
+
+export const createDocWithBarcodes = async (arr: Barcodes) => {
+  console.log(arr)
+
+  const barcodes = arr.map((e) => e.barcode)
+  const productName = arr[0].productName
+  const partNumber = arr[0].partNumber
+  const type = arr[0].type
+
+  const imageTest = await (await fetch(imgUrl)).arrayBuffer()
+  // const imageEac = await filesystem.readBinaryFile('/frontend/dist/EAC.png')
 
   // Определение размеров страницы
   const isTerminalOrSupport = type === 'TerminalBlocks' || type === 'SupportPanels'
@@ -76,6 +76,8 @@ export const createDocWithBarcodes = async (
   const sections = []
 
   for (const barcode of barcodes) {
+    console.log(barcode)
+
     try {
       const barcodeDataUrl = generateBarcodeDataUrl(barcode)
       const imageBuffer = await fetch(barcodeDataUrl).then((res) => res.arrayBuffer())
@@ -109,7 +111,7 @@ export const createDocWithBarcodes = async (
               new Paragraph({
                 children: [
                   new ImageRun({
-                    data: imageEac,
+                    data: imageTest,
                     transformation: {
                       width: 50 / 2.65,
                       height: 50 / 2.65
@@ -224,7 +226,7 @@ export const createDocWithBarcodes = async (
   }
 
   const today = new Date()
-  const formattedDate = `${today.getDate()}_${today.getMonth() + 1}_${today.getFullYear()}_${today.getMinutes()}`
+  const formattedDate = `${today.getDate()}_${today.getMonth() + 1}_${today.getFullYear()}_${today.getSeconds()}`
   const fileName = `barcodes_${formattedDate}.docx`
   const doc = new Document({
     sections,

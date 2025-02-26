@@ -8,7 +8,7 @@
     "prisma": "^5.18.0"
   },
   "scripts": {
-    "compile": "bun build --compile --minify --sourcemap ./index.ts --outfile myapp"
+    "compile": "bun build --compile --minify --sourcemap ./index.ts --outfile server"
   },
   "peerDependencies": {
     "typescript": "^5.4.5"

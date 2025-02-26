@@ -24,7 +24,8 @@ const emit = defineEmits<{
 const failedComponents: Ref<string[]> = ref([])
 const serialNumber = ref('')
 const information = ref('')
-const pattern = /^\d+$/
+// const pattern = /^\d+$/
+const pattern = /^\d{8}(-\d{2})?$/
 const component: Ref<Component | null> = ref(null)
 const errorStore = useErrorStore()
 const defectDialog = ref(false)
@@ -32,7 +33,8 @@ const comment = ref('')
 
 const checkSerialNumber = async ($event: Event) => {
   const target = $event.target as HTMLTextAreaElement
-  if (target.value.length === 8 && pattern.test(target.value)) {
+  // if ((target.value.length === 8 || target.value.length === 11) && pattern.test(target.value)) {
+    // if (target.value.length === 8 && pattern.test(target.value)) {
     clearState()
     const result = await fetchComponent(target.value)
     if (!result.data) {
@@ -59,7 +61,7 @@ const checkSerialNumber = async ($event: Event) => {
       props.product.productSerialNumbers.push(result.data.snComponent)
     }
     console.log(result.data)
-  }
+  // }
 }
 
 const markingPassed = async () => {
@@ -167,16 +169,17 @@ const clearState = () => {
           @click:clear="clearState"
           density="compact"
           clearable
-          @input="checkSerialNumber"
+          @keyup.enter="checkSerialNumber"
           v-model="serialNumber"
           :focused="true"
           label="Сканируйте серийный номер"
           variant="solo"
-          maxlength="8"
-          :rules="[(value) => pattern.test(value) || 'Только цифры']"
+          maxlength="13"
         ></v-text-field>
       </v-col>
     </v-row>
+    <!-- :rules="[(value) => pattern.test(value) || 'Только цифры']" -->
+
     <v-row
       v-if="component"
       justify="center"

@@ -12,7 +12,7 @@ import {
 } from 'docx'
 import { filesystem, os } from '@neutralinojs/lib'
 import type { TransformSpecification } from './transformSP'
-
+import imgUrl from './1.png'
 type OperationMap = Record<string, string>
 
 const OPERATION_MAP: OperationMap = {
@@ -114,7 +114,8 @@ export const generatePasport = async (
       new Date(operation.date).toLocaleString()
     ])
 
-    const imageData = await filesystem.readBinaryFile('./frontend/src/assets/1.png')
+    // const imageData = await filesystem.readBinaryFile('./frontend/public/1.png')
+    const imageTest = await (await fetch(imgUrl)).arrayBuffer()
 
     const doc = new Document({
       sections: [
@@ -124,7 +125,7 @@ export const generatePasport = async (
             new Paragraph({
               children: [
                 new ImageRun({
-                  data: imageData,
+                  data: imageTest,
                   transformation: {
                     width: 600 / 2.65,
                     height: 119 / 2.65
