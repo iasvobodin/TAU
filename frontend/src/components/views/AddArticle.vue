@@ -2,12 +2,10 @@
 import { onMounted, ref, reactive, watch, nextTick, computed } from 'vue'
 import { usePartNumberComponents } from '../../stores/partNumberComponents'
 import { useSerialNumberStore } from '../../stores/serialNumberStore'
-import type { SerialNumberData } from '@/assets/interfaces'
-import { Icon, os } from '@neutralinojs/lib'
 import { useErrorStore } from '@/stores/errorStore'
 import { fetchSpecifications } from '@/api/specificationServices'
 import { createDocWithBarcodes } from '@/assets/generateBarcodeV2'
-import type { ModulesType } from '@/assets/interfaces'
+import type { ModulesType, SerialNumberData } from '@/assets/interfaces'
 const props = defineProps({
   invoice: {
     type: String,
@@ -92,19 +90,19 @@ const checkSerialNumber = ($event: Event) => {
   const target = $event.target as HTMLTextAreaElement
   {
     // if ((target.value.length === 8 || target.value.length === 11) && pattern.test(target.value)) {
-      if (!props.invoice || !props.supplier) {
-        errorStore.addError('Необходимо заполнить все поля')
-        setTimeout(errorStore.removeError, 5000)
-        SerialNumber.value = null
-      }
-      SerialNumber.value &&
-        serialNumberStore.addSerialNumber({
-          name: target.value,
-          partNumber: selectedPartNumber.value.split(' ')[0],
-          invoice: props.invoice,
-          supplier: props.supplier
-        })
+    if (!props.invoice || !props.supplier) {
+      errorStore.addError('Необходимо заполнить все поля')
+      setTimeout(errorStore.removeError, 5000)
       SerialNumber.value = null
+    }
+    SerialNumber.value &&
+      serialNumberStore.addSerialNumber({
+        name: target.value,
+        partNumber: selectedPartNumber.value.split(' ')[0],
+        invoice: props.invoice,
+        supplier: props.supplier
+      })
+    SerialNumber.value = null
     // }
   }
 }
@@ -120,13 +118,13 @@ const tryToPrint = async () => {
   const result = await fetchSpecifications()
 
   const results = <Array<Barcodes>>[]
-console.log(result.data,'result.data');
+  console.log(result.data, 'result.data')
 
   result.data?.forEach((j) => {
     serialNumberStore.sNumbers.forEach((e) => {
       if (j.electronicBoard1 === e.partNumber || j.electronicBoard2 === e.partNumber) {
-        console.log(j.productName,'j.productName');
-        
+        console.log(j.productName, 'j.productName')
+
         results.push({
           barcode:
             j.type === 'Modules'
@@ -211,7 +209,6 @@ serialNumberStore.$subscribe(async (isDuplicate, state) => {
       </v-col>
     </v-row>
     <!-- :rules="[(value) => pattern.test(value) || 'Только цифры']" -->
-
   </v-container>
   <teleport to="body"> </teleport>
   <v-data-table-virtual

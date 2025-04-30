@@ -40,7 +40,7 @@ type Barcodes = {
 }[]
 
 export const createDocWithBarcodes = async (arr: Barcodes) => {
-  console.log(arr)
+  // console.log(arr)
 
   const barcodes = arr.map((e) => e.barcode)
   const productName = arr[0].productName
@@ -90,6 +90,7 @@ export const createDocWithBarcodes = async (arr: Barcodes) => {
               children: [
                 new ImageRun({
                   data: imageBuffer,
+                  type: 'png',
                   transformation: {
                     width: 270 / 2.65,
                     height: 50 / 2.65
@@ -112,6 +113,7 @@ export const createDocWithBarcodes = async (arr: Barcodes) => {
                 children: [
                   new ImageRun({
                     data: imageTest,
+                    type: 'png',
                     transformation: {
                       width: 50 / 2.65,
                       height: 50 / 2.65

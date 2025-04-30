@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import type { StageType, ProductType, ProductAllPayload } from '@/assets/interfaces'
+import { onMounted, ref } from 'vue'
+import type { StageType, ProductType, ProductAllPayload, Tsp } from '@/assets/interfaces'
 import ProductInformation from '@/components/ProductInformation.vue'
 import type { Ref } from 'vue'
 import type { Component, Prisma } from '../../../../extensions/src'
@@ -12,10 +12,10 @@ import { updateComponent } from '@/api/componentServices'
 import { useUserStore } from '@/stores/user'
 import { useErrorStore } from '@/stores/errorStore'
 import { fetchComponent } from '@/api/componentServices'
-import { type TransformSpecification } from '@/assets/transformSP'
+import { os, filesystem, server, events, window as neuWindow } from '@neutralinojs/lib'
 const props = defineProps<{
   information: ProductType['information']
-  product: TransformSpecification
+  product: Tsp
 }>()
 
 const emit = defineEmits<{
@@ -31,36 +31,55 @@ const errorStore = useErrorStore()
 const defectDialog = ref(false)
 const comment = ref('')
 
-const checkSerialNumber = async ($event: Event) => {
-  const target = $event.target as HTMLTextAreaElement
-  // if ((target.value.length === 8 || target.value.length === 11) && pattern.test(target.value)) {
-    // if (target.value.length === 8 && pattern.test(target.value)) {
-    clearState()
-    const result = await fetchComponent(target.value)
-    if (!result.data) {
-      //ошибка с сервера, сьрасываем
-      serialNumber.value = ''
-      return
-    } else if (result.data.snProductId) {
-      errorStore.addError(`Данный компонент уже используется в ${result.data.snProductId}`)
-      setTimeout(errorStore.removeError, 5000)
-      serialNumber.value = ''
-    } else if (result.data.status === 'failed') {
-      errorStore.addError(`Данный компонент забракован`)
-      setTimeout(errorStore.removeError, 5000)
-      serialNumber.value = ''
-    } else if (!findPartNumberInSpecification(result.data.pnComponentId)) {
-      errorStore.addError(`Данный компонент ${result.data?.pnComponentId} не корпус`)
-      setTimeout(errorStore.removeError, 5000)
-      serialNumber.value = ''
+const checkSerialNumber = async ($event: Event | string) => {
+  //преобразуем тип входещей переменной
+  const target = () => {
+    if (typeof $event === 'string') {
+      const target = $event
+      return target
     } else {
-      console.log('COMPARE')
-      errorStore.addInfo(`Компонент ${result.data.snComponent} успешно добавлен`)
+      const target = $event.target as HTMLTextAreaElement
+      return target.value
+    }
+  }
+
+  // if ((target.value.length === 8 || target.value.length === 11) && pattern.test(target.value)) {
+  // if (target.value.length === 8 && pattern.test(target.value)) {
+  clearState()
+  const result = await fetchComponent(target())
+  if (!result.data) {
+    //ошибка с сервера, сьрасываем
+    serialNumber.value = ''
+    return
+  } else if (result.data.status === 'failed') {
+    errorStore.addError(`Данный компонент забракован`)
+    setTimeout(errorStore.removeError, 5000)
+    serialNumber.value = ''
+  } else if (result.data.snProductId) {
+    if (result.data.snProductId === props.product.snProduct) {
+      //вот тут уже корпус привязан
+      errorStore.addInfo(`Корпус уже привязан`)
       setTimeout(errorStore.removeInfo, 5000)
+      serialNumber.value = result.data.snComponent
       component.value = result.data
       props.product.productSerialNumbers.push(result.data.snComponent)
+      return
     }
-    console.log(result.data)
+    errorStore.addError(`Данный компонент уже используется в ${result.data.snProductId}`)
+    setTimeout(errorStore.removeError, 5000)
+    serialNumber.value = ''
+  } else if (!findPartNumberInSpecification(result.data.pnComponentId)) {
+    errorStore.addError(`Данный компонент ${result.data?.pnComponentId} не корпус`)
+    setTimeout(errorStore.removeError, 5000)
+    serialNumber.value = ''
+  } else {
+    console.log('COMPARE')
+    errorStore.addInfo(`Компонент ${result.data.snComponent} успешно добавлен`)
+    setTimeout(errorStore.removeInfo, 5000)
+    component.value = result.data
+    props.product.productSerialNumbers.push(result.data.snComponent)
+  }
+  console.log(result.data)
   // }
 }
 
@@ -112,6 +131,8 @@ const markingFailed = async () => {
     usedComponents: failedComponents.value.join(', ')
     // productId: props.product.snProduct
   }
+  console.log(productionOperatioData, 'productionOperatioData')
+
   const resultCreate = await createProductionOperationFailed(productionOperatioData)
   console.log(resultCreate.data)
   if (resultCreate.error) {
@@ -149,6 +170,17 @@ const clearState = () => {
   component.value = null
   comment.value = ''
 }
+
+onMounted(() => {
+  props.product.components.forEach((element) => {
+    checkSerialNumber(element.snComponent!)
+  })
+})
+const openFolder = () => {
+  os.execCommand(
+    'explorer "\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\Наклейки\\Гравировка"'
+  )
+}
 </script>
 
 <template>
@@ -162,7 +194,7 @@ const clearState = () => {
   <v-divider class="mb-4"></v-divider>
   <ProductInformation :information="props.product.information" />
   <v-container>
-    <v-row align="center" justify="center">
+    <v-row v-if="!component" align="center" justify="center">
       <v-col>Отсканируйте штрих-код c заводским номером корпуса</v-col>
       <v-col>
         <v-text-field
@@ -187,12 +219,18 @@ const clearState = () => {
       class="text-red text-decoration-underline"
     >
       <p class="text-center text-green">
-        Необходимо нанести маркировку на лазере,<br />
+        Необходимо нанести маркировку на лазере,
+        <!-- <br />
         затем наклеить SN {{ props.product.snProduct }} на корпус с SN
         {{ component?.snComponent }}
-        <br /></p
-    ></v-row>
-    <v-row> <h2>Для маркировки данного типа оборудования необходимо использовать</h2></v-row>
+        <br /> -->
+      </p></v-row
+    >
+    <v-row align="center">
+      <h2 class="text-center">
+        Для маркировки данного типа оборудования необходимо использовать
+      </h2></v-row
+    >
   </v-container>
   <v-container v-if="product">
     <v-row align="center">
@@ -201,7 +239,7 @@ const clearState = () => {
     </v-row>
     <v-row align="center">
       <v-col> Шаблон для печати </v-col>
-      <v-col> {{ product.template.markingTemplate }} </v-col>
+      <v-col> <v-btn @click="openFolder" color="gray-lighten-3" block>Открыть папку</v-btn> </v-col>
     </v-row>
     <v-row>
       <v-col>

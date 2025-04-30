@@ -1,27 +1,31 @@
 <script setup lang="ts">
 import { onMounted, ref, watch, watchEffect, type Ref } from 'vue'
-import type { StageType, ProductType, ProductAllPayload } from '@/assets/interfaces'
 import ProductInformation from '@/components/ProductInformation.vue'
 import { updateComponent } from '@/api/componentServices'
+import bwipjs from 'bwip-js'
 import {
   createProductionOperationPassed,
   createProductionOperationFailed,
-  deleteProductionOperation
+  deleteProductionOperation,
+  updateProductionOperation
 } from '@/api/productionOperationServices'
 import { useErrorStore } from '@/stores/errorStore'
 import { fetchComponent } from '@/api/componentServices'
 import type { Component, Prisma } from '../../../../extensions/src'
 import { useUserStore } from '@/stores/user'
-import { type TransformSpecification } from '@/assets/transformSP'
+import type { ModulesType, Barcodes, ProductType, StageType, Tsp } from '@/assets/interfaces'
+import { printLabel } from '@/assets/printLabel'
+import { server, filesystem, os, events, window as neuWindow } from '@neutralinojs/lib'
+
 const props = defineProps<{
   information: ProductType['information']
-  product: TransformSpecification
+  product: Tsp
 }>()
 
 const emit = defineEmits<{
   (e: 'done'): void
 }>()
-const productionOperationAlarm = ref('')
+const productionOperationAlarm = ref('') // предупреждение об удалении операции!
 const comment = ref('')
 const pattern = /^\d{8}(-\d{2})?$/
 const serialNumber = ref('')
@@ -29,7 +33,7 @@ const defectDialog = ref(false)
 const failedComponents: Ref<string[]> = ref([])
 const component: Ref<Component | null> = ref(null)
 const errorStore = useErrorStore()
-const disabledAction = ref(false)
+const disabledAction = ref(false) //переменная на блокировку кнопок
 const stageType: StageType = 'assembly'
 
 const findPartNumberInSpecification = (item: string) => {
@@ -47,70 +51,80 @@ const findSerialNumberInAdded = (item: string) => {
 const checkSerialNumber = async ($event: Event) => {
   const target = $event.target as HTMLTextAreaElement
   // if ((target.value.length === 8 || target.value.length === 11) && pattern.test(target.value)) {
-    // запрашиваем компонент по серийнику
-    const result = await fetchComponent(target.value)
-    if (!result.data) {
-      //сбрасываем
-      serialNumber.value = ''
-      return
-    } else if (result.data.status === 'failed') {
-      // не тот компонент
-      errorStore.addError(`Данный компонент забракован`)
-      setTimeout(errorStore.removeError, 5000)
-      //сбрасываем
-      serialNumber.value = ''
-      return
-    } else if (!!!findPartNumberInSpecification(result.data.pnComponentId)) {
-      // не тот компонент
-      errorStore.addError(
-        `Данный компонент ${result.data.pnComponentId} не соответствует спецификации ${props.product.productSerialNumbers}`
-      )
-      setTimeout(errorStore.removeError, 5000)
-      //сбрасываем
-      serialNumber.value = ''
-    } else if (result.data.snProductId) {
-      // запрошенный компонент найден, но уже используется
-      errorStore.addError(
-        `Данный компонент уже используется в другом модуле ${result.data.snProductId}`
-      )
-      setTimeout(errorStore.removeError, 5000)
-      //сбрасываем
-      serialNumber.value = ''
-    } else if (result.data.snProductId === props.product.snProduct) {
-      // запрошенный компонент найден, но уже используется
-      errorStore.addError(`Данный компонент уже используется в этом модуле`)
-      setTimeout(errorStore.removeError, 5000)
-      //сбрасываем
-      serialNumber.value = ''
-    } else if (findSerialNumberInAdded(serialNumber.value)) {
-      // не тот компонент
-      console.log('уже добавлен')
+  // запрашиваем компонент по серийнику
+  const result = await fetchComponent(target.value)
+  if (!result.data) {
+    //сбрасываем
+    serialNumber.value = ''
+    return
+  } else if (result.data.status === 'failed') {
+    // не тот компонент
+    errorStore.addError(`Данный компонент забракован`)
+    setTimeout(errorStore.removeError, 5000)
+    //сбрасываем
+    serialNumber.value = ''
+    return
+  } else if (!!!findPartNumberInSpecification(result.data.pnComponentId)) {
+    // не тот компонент
+    errorStore.addError(
+      `Данный компонент ${result.data.pnComponentId} не соответствует спецификации ${props.product.productSerialNumbers}`
+    )
+    setTimeout(errorStore.removeError, 5000)
+    //сбрасываем
+    serialNumber.value = ''
+  } else if (result.data.snProductId) {
+    // запрошенный компонент найден, но уже используется
+    errorStore.addError(
+      `Данный компонент уже используется в другом модуле ${result.data.snProductId}`
+    )
+    setTimeout(errorStore.removeError, 5000)
+    //сбрасываем
+    serialNumber.value = ''
+  } else if (result.data.snProductId === props.product.snProduct) {
+    // запрошенный компонент найден, но уже используется
+    errorStore.addError(`Данный компонент уже используется в этом модуле`)
+    setTimeout(errorStore.removeError, 5000)
+    //сбрасываем
+    serialNumber.value = ''
+  } else if (findSerialNumberInAdded(serialNumber.value)) {
+    // не тот компонент
+    console.log('уже добавлен')
 
-      errorStore.addError(`Данный компонент уже добавлен`)
-      setTimeout(errorStore.removeError, 5000)
-      //сбрасываем
-      serialNumber.value = ''
-    } else {
-      //вроде то что надо
-      //нужно найти артикул который совпа, и добавить его серийник в объект
-      for (const [key, value] of Object.entries(props.product.specification)) {
-        if (value.PN === result.data.pnComponentId) {
-          value.SN = result.data.snComponent
-          props.product.productSerialNumbers.push(value.SN)
+    errorStore.addError(`Данный компонент уже добавлен`)
+    setTimeout(errorStore.removeError, 5000)
+    //сбрасываем
+    serialNumber.value = ''
+  } else {
+    //вроде то что надо
+    //нужно найти артикул который совпадает, и добавить его серийник в объект
+    for (const [key, value] of Object.entries(props.product.specification)) {
+      if (value.PN === result.data.pnComponentId) {
+        // проверяем совпадает ли артикул с найденным в спецификации
+        console.log(key, 'консоль ключа, нужно проверить что это плата чтобы забрать серийник')
+        if (props.product.information['Тип изделия'] === 'TerminalBlocks') {
+          //клеммник!!!!
+          if (key.toLowerCase().includes('плата 1')) {
+            console.log('то что надо для клеммника')
+          }
         }
+
+        value.SN = result.data.snComponent
+        props.product.productSerialNumbers.push(value.SN)
+        // console.log(props.product)
       }
-      console.log('COMPARE')
-      errorStore.addInfo(`Компонент ${result.data.snComponent} успешно добавлен`)
-      setTimeout(errorStore.removeInfo, 5000)
-      serialNumber.value = ''
     }
+    console.log('COMPARE')
+    errorStore.addInfo(`Компонент ${result.data.snComponent} успешно добавлен`)
+    setTimeout(errorStore.removeInfo, 5000)
+    //сбрасываем
+    serialNumber.value = ''
+  }
   // }
 }
 
+//смотрим чтобы были все серийники по спецификации, блокируем разблокируем кнопки
 watch(props.product.specification, () => {
   if (props.product.specification) {
-    console.log('watch')
-
     disabledAction.value = Object.values(props.product.specification).every(
       (item) => item.SN !== null && item.SN !== undefined && item.SN !== ''
     )
@@ -118,20 +132,20 @@ watch(props.product.specification, () => {
     disabledAction.value = false
   }
 })
-
+//смотрим бракуем ли мы компонент который уже учавствовал в операциях, если да, то выводим предупреждение
 watch(failedComponents, (e) => {
-  console.log(e, productionOperationAlarm.value)
   if (
     failedComponents.value.some((j) => j === props.product.productionOperations[0].usedComponents)
   ) {
-    console.log('atatata')
-    productionOperationAlarm.value = `${props.product.productionOperations[0].usedComponents} 
-    операция ${props.product.productionOperations[0].stageType} будет удалена`
+    // так как это сборка, то до этого у нас может быть одна удачная операция, это маркировка, типа мы её удаляем
+    productionOperationAlarm.value = `${props.product.productionOperations[0].usedComponents} Этот компонент был задействован в 
+     "${props.product.productionOperations[0].stageType}"`
   } else {
     productionOperationAlarm.value = ''
   }
 })
 
+//чистим состояние после закрытия окна по браку
 watch(defectDialog, () => {
   if (defectDialog.value === false) {
     comment.value = ''
@@ -177,17 +191,30 @@ const assemblyPassed = async () => {
 }
 
 const assemblyFailed = async () => {
-  //если есть совпадения по существующим операциям
+  //если есть операции, и есть компоненты учавствующие в них
   if (productionOperationAlarm.value && props.product.productionOperations.length > 0) {
-    console.log('HAS EXIST PRODUCTION OPERATION', props.product.productionOperations[0].id)
-    //удаляем операцию
-    const delResult = await deleteProductionOperation(props.product.productionOperations[0].id)
-    console.log(delResult.data)
-    if (delResult.error) {
-      return
+    //отвязываем операцию от продукта, присваиваем статус rejected
+    //ищем id
+    const { id } = props.product.productionOperations.find((e) => e.stageType === 'marking') as {
+      id: number
+    }
+
+    try {
+      await updateProductionOperation(id, {
+        status: 'rejected',
+        productId: null, // отвязываем от продукта
+        componentId: props.product.productionOperations[0].usedComponents,
+        productSN: props.product.snProduct,
+        comment: 'отклонённая операция из-за брака на сборке',
+        usedComponents: null
+      })
+
+      // debugger
+    } catch (error) {
+      console.log(error)
+      throw new Error('jopa')
     }
   }
-
   //создаём новую операцию со статусом брак и привязываем её к компоненту-ам
   //помечаем выбранный компонент как брак, убираем его из списка
   // если продукт содержит операции, надо как то проверить и отвязать их
@@ -200,29 +227,9 @@ const assemblyFailed = async () => {
   //   console.log('yap');
   //   return
   // }
+
+  //ЦИКЛ ПО ВЫБРАННОМУ БРАКУ
   const promises = failedComponents.value.map(async (fComponent) => {
-    // if (props.product.productionOperations.length > 0) {
-    //   // let index;
-    //   //есть операции надо чёто делать
-    //   props.product.productionOperations.map(async(e, i) => {
-    //     if (
-    //       e.usedComponents === fComponent ||
-    //       (e.usedComponents &&
-    //         e.usedComponents.length > 5 &&
-    //         Array.from(e.usedComponents).some((e) => e === fComponent))
-    //     ) {
-    //       //бракуем компонент из другой операции, удаляем эту операцию
-    //       const delResult = await deleteProductionOperation(props.product.productionOperations[0].id)
-    //       if (delResult.error) {
-    //         return
-    //       }
-
-    //       // props.product.productionOperations.splice(i, 1)
-    //     }
-    //   })
-
-    // }
-
     const productionOperatioData = {
       stageType,
       status: 'failed',
@@ -232,28 +239,26 @@ const assemblyFailed = async () => {
       comment: comment.value
     }
 
-    //создаём бракованную операцию на все выделеннве по браку
-    const resultCreate = await createProductionOperationFailed(productionOperatioData)
-    console.log(resultCreate, 'resultCreate')
-
-    //если оштбка с сервера не продолжаем!
-    if (resultCreate.error) {
-      return
+    //создаём бракованную операцию на все выделенные по браку
+    try {
+      await createProductionOperationFailed(productionOperatioData)
+    } catch (error) {
+      console.log(error)
+      return //если ошибка с сервера не продолжаем!
     }
 
     //обновляем компонент со статусом брак, и отвязываем от продукта
-    const resultUpdate = await updateComponent(fComponent, {
-      status: 'failed',
-      //отвязываем бракованный компонент от продукта
-      snProductId: null
-    })
-    console.log(resultUpdate)
-    //если ошибка с сервера не продолжаем!
-    if (resultUpdate.error) {
+    try {
+      await updateComponent(fComponent, {
+        status: 'failed',
+        snProductId: null //отвязываем бракованный компонент от продукта
+      })
+    } catch (error) {
+      console.log(error)
       return
     }
 
-    //если в базе поправили то удаляем элемент
+    //если в базе поправили то удаляем элемент локально из модифицированной спецификации
     for (const key in props.product.specification) {
       // Если значение SN совпадает с нужным значением, удаляем этот ключ
       if (props.product.specification[key].SN === fComponent) {
@@ -261,12 +266,16 @@ const assemblyFailed = async () => {
       }
     }
 
-    // Найти индекс первого элемента с указанным значением
-    const indexToRemove = props.product.productSerialNumbers.indexOf(fComponent)
-    // Проверить, найден ли элемент, и удалить его
-    if (indexToRemove > -1) {
-      props.product.productSerialNumbers.splice(indexToRemove, 1)
-    }
+    // // Найти индекс первого элемента с указанным значением
+    // const indexToRemove = props.product.productSerialNumbers.indexOf(fComponent)
+    // // Проверить, найден ли элемент, и удалить его
+    // if (indexToRemove > -1) {
+    //   props.product.productSerialNumbers.splice(indexToRemove, 1)
+    // }
+    //вариант выше но через фильтр
+    props.product.productSerialNumbers = props.product.productSerialNumbers.filter(
+      (serial) => serial !== fComponent
+    )
   })
 
   // Ожидаем завершения всех промисов
@@ -282,6 +291,27 @@ const assemblyFailed = async () => {
   comment.value = ''
   failedComponents.value = []
 }
+
+const printLabelDeffect = async () => {
+  // Создаём глубокую копию с помощью structuredClone
+  const modifiedInformation = JSON.parse(
+    JSON.stringify(props.information)
+  ) as ProductType['information']
+  const modifiedProduct = JSON.parse(JSON.stringify(props.product)) as Tsp
+
+  // Изменяем 'Тип изделия' в копии
+  // modifiedInformation!['Тип изделия'] = 'Defective';
+  modifiedProduct.information['Тип изделия'] = 'Defective'
+  const p2 = { product: modifiedProduct, information: modifiedInformation }
+  console.log(p2)
+
+  // Вызываем printLabel
+  await printLabel(p2)
+}
+const serialNumberInput = ref<InstanceType<typeof import('vuetify/components').VTextField> | null>(null);
+onMounted(() => {
+  serialNumberInput.value?.$el.querySelector('input')?.focus()
+})
 </script>
 
 <template>
@@ -300,18 +330,17 @@ const assemblyFailed = async () => {
       <v-col>Отсканируйте штрих-код компонента</v-col>
       <v-col>
         <v-text-field
+          ref="serialNumberInput"
           @click:clear="component = null"
           density="compact"
           clearable
           @keyup.enter="checkSerialNumber"
           v-model="serialNumber"
-          :focused="true"
           label="Сканируйте серийный номер"
           variant="solo"
           maxlength="13"
         ></v-text-field>
         <!-- :rules="[(value) => pattern.test(value) || 'Только цифры']" -->
-
       </v-col>
     </v-row>
   </v-container>
@@ -325,6 +354,11 @@ const assemblyFailed = async () => {
       <v-col>
         <p v-if="!value.SN">Сканировать SN</p>
         <p class="text-green" v-else>{{ value.SN }}</p>
+      </v-col>
+    </v-row>
+    <v-row>
+      <v-col>
+        <v-btn @click="printLabel(props)" color="grey-lighten-3" block> Печать наклейки </v-btn>
       </v-col>
     </v-row>
     <v-row>
@@ -376,9 +410,19 @@ const assemblyFailed = async () => {
           <v-col>
             <h3 class="text-center">Подтвердите действие</h3>
             <br />
-            <p class="text-red">{{ productionOperationAlarm }}</p>
+            <h3 v-if="productionOperationAlarm" class="text-red text-center">
+              {{ productionOperationAlarm }} <br />
+              Данная операция будет удалена
+            </h3>
             <br />
             <p class="text-center">Брак компонентов SN {{ failedComponents.join(', ') }}</p>
+          </v-col>
+        </v-row>
+        <v-row>
+          <v-col>
+            <v-btn @click="printLabelDeffect" color="grey-lighten-3" block>
+              Печать наклейки Брак
+            </v-btn>
           </v-col>
         </v-row>
         <v-row>

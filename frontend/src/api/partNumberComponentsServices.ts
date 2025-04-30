@@ -4,9 +4,9 @@ import type { Prisma, PartNumberComponent } from '../../../extensions/src'
 export const fetchPNComponent = async (
   partNumber: string
 ): Promise<ApiResponse<PartNumberComponent>> => {
-  return get<PartNumberComponent>(`http://localhost:3000/part-number-components/${partNumber}`)
+  return get<PartNumberComponent>(`http://10.69.19.59:3000/part-number-components/${partNumber}`)
 }
 
 export const getPNComponents = async (): Promise<ApiResponse<PartNumberComponent[]>> => {
-  return get<PartNumberComponent[]>(`http://localhost:3000/part-number-components`)
+  return get<PartNumberComponent[]>(`http://10.69.19.59:3000/part-number-components`)
 }

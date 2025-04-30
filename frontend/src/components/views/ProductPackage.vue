@@ -1,15 +1,14 @@
 <script setup lang="ts">
 import ProductInformation from '@/components/ProductInformation.vue'
-import { type TransformSpecification } from '@/assets/transformSP'
 import type { Prisma } from '../../../../extensions/src'
 import { createProductionOperationPassed } from '@/api/productionOperationServices'
 import { useUserStore } from '@/stores/user'
-import type { StageType, ProductType } from '@/assets/interfaces'
+import type { StageType, ProductType, Tsp } from '@/assets/interfaces'
 
 const stageType: StageType = 'package'
 const props = defineProps<{
   information: ProductType['information']
-  product: TransformSpecification
+  product: Tsp
 }>()
 
 const emit = defineEmits<{

@@ -22,7 +22,8 @@ import {
   type PositiveUniversalMeasure,
   type ITableBordersOptions,
   type ISectionPropertiesOptions,
-  type IBorderOptions
+  type IBorderOptions,
+  type IImageOptions
 } from 'docx'
 import { filesystem, os } from '@neutralinojs/lib'
 import type { ModulesType } from '@/assets/interfaces'
@@ -92,6 +93,7 @@ export const createDocWithBarcodes = async (
               children: [
                 new ImageRun({
                   data: imageBuffer,
+                  type: 'png',
                   transformation: {
                     width: 270 / 2.65,
                     height: 50 / 2.65
@@ -114,6 +116,7 @@ export const createDocWithBarcodes = async (
                 children: [
                   new ImageRun({
                     data: imageTest,
+                    type: 'png',
                     transformation: {
                       width: 50 / 2.65,
                       height: 50 / 2.65
@@ -251,7 +254,7 @@ export const createDocWithBarcodes = async (
       filters: [{ name: 'Documents', extensions: ['docx'] }]
     })
     await filesystem.writeBinaryFile(entry, arrayBuffer)
-    console.log('Document created successfully')
+    console.log('Document created successfully', entry)
   } catch (error: any) {
     console.error('Error creating document:', error)
     throw new Error(error.message)

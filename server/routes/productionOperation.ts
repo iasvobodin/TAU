@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { Prisma, ProductionOperation } from "../../extensions/src";
 import type { StageType } from "../../frontend/src/assets/interfaces";
+import { handlePrismaError } from "../handleError";
 export default function productionOperationRoutes(app: FastifyInstance) {
   app.get("/production-operations", async (request, reply) => {
     try {
@@ -8,7 +9,8 @@ export default function productionOperationRoutes(app: FastifyInstance) {
         await app.prisma.productionOperation.findMany();
       reply.send(productionOperations);
     } catch (error) {
-      reply.code(500).send({ error: "Internal Server Error" });
+      handlePrismaError(error, reply);
+      // reply.code(500).send({ error: "Internal Server Error" });
     }
   });
 
@@ -25,11 +27,35 @@ export default function productionOperationRoutes(app: FastifyInstance) {
         reply.code(404).send({ error: "productionOperation not found" });
       }
     } catch (error) {
-      console.log(error);
+      handlePrismaError(error, reply);
+      // console.log(error);
 
-      reply.code(500).send({ error: "Internal Server Error" });
+      // reply.code(500).send({ error: "Internal Server Error" });
     }
   });
+
+  app.get(
+    "/production-operations/productSN/:productSN",
+    async (request, reply) => {
+      try {
+        const { productSN } = request.params as { productSN: string };
+        const productionOperation =
+          await app.prisma.productionOperation.findMany({
+            where: { productSN },
+          });
+        if (productionOperation.length > 0) {
+          reply.send(productionOperation);
+        } else {
+          reply.code(404).send({ error: "Операции не найдены" });
+        }
+      } catch (error) {
+        handlePrismaError(error, reply);
+        // console.log(error);
+
+        // reply.code(500).send({ error: "Internal Server Error" });
+      }
+    }
+  );
 
   app.post<{ Body: ProductionOperation }>(
     "/production-operations-failed",
@@ -53,8 +79,9 @@ export default function productionOperationRoutes(app: FastifyInstance) {
         );
         reply.code(201).send(productionOperation);
       } catch (error) {
-        console.log(error);
-        reply.code(500).send({ error: "Internal Server Error" });
+        handlePrismaError(error, reply);
+        // console.log(error);
+        // reply.code(500).send({ error: "Internal Server Error" });
       }
     }
   );
@@ -74,7 +101,7 @@ export default function productionOperationRoutes(app: FastifyInstance) {
         ) {
           throw new Error("Missing required fields");
         }
-        console.log(data);
+        // console.log(data);
 
         const productionOperation = await app.prisma.productionOperation.create(
           {
@@ -89,41 +116,44 @@ export default function productionOperationRoutes(app: FastifyInstance) {
         );
         reply.code(201).send(productionOperation);
       } catch (error) {
-        console.log(error);
-        reply.code(500).send({ error: "Internal Server Error" });
+        handlePrismaError(error, reply);
+        // console.log(error);
+        // reply.code(500).send({ error: "Internal Server Error" });
       }
     }
   );
 
   app.put<{
-    Params: { id: number };
+    Params: { id: string };
     Body: Prisma.ProductionOperationUncheckedUpdateInput;
   }>("/production-operations/:id", async (request, reply) => {
     try {
       const { id } = request.params;
       const data = request.body;
       const productionOperation = await app.prisma.productionOperation.update({
-        where: { id },
+        where: { id: parseInt(id) },
         data,
       });
       reply.send(productionOperation);
     } catch (error) {
-      reply.code(500).send({ error: "Internal Server Error" });
+      handlePrismaError(error, reply);
+      // reply.code(500).send({ error: "Internal Server Error" });
     }
   });
 
   app.delete("/production-operations/:id", async (request, reply) => {
     try {
       const { id } = request.params as { id: string };
-      console.log(id, "IDIDIDIDIDIDIDIDIDIDID");
+      // console.log(id, "IDIDIDIDIDIDIDIDIDIDID");
 
       await app.prisma.productionOperation.delete({
         where: { id: parseInt(id) },
       });
       reply.code(201).send({ message: "Object deleted" });
     } catch (error) {
-      console.log(error);
-      reply.code(500).send({ error: "Internal Server Error" });
+      handlePrismaError(error, reply);
+      // console.log(error);
+      // reply.code(500).send({ error: "Internal Server Error" });
     }
   });
 }

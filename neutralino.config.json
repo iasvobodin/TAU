@@ -3,14 +3,13 @@
   "applicationId": "js.neutralino.sample",
   "version": "1.0.0",
   "defaultMode": "window",
-  "port": 0,
+  "port": 8080,
   "documentRoot": "/frontend/dist/",
   "url": "/",
   "singlePageServe": true,
   "enableServer": true,
   "enableNativeAPI": true,
-  "enableExtensions": true,
-  "tokenSecurity": "one-time",
+  "tokenSecurity": "none",
   "extensions": [],
   "logging": {
     "enabled": true,
@@ -20,23 +19,13 @@
     "app.*",
     "os.*",
     "window.*",
+    "server.*",
     "filesystem.*",
     "events.*",
     "extensions.*",
     "debug.log"
   ],
-  "globalVariables": {
-    "TEST1": "Hello",
-    "TEST2": [
-      2,
-      4,
-      5
-    ],
-    "TEST3": {
-      "value1": 10,
-      "value2": {}
-    }
-  },
+  "globalVariables": {},
   "modes": {
     "window": {
       "title": "TAU",
@@ -82,9 +71,8 @@
   "cli": {
     "binaryName": "TAU",
     "resourcesPath": "/frontend/dist/",
-    "extensionsPath": "/extensions/",
-    "binaryVersion": "5.2.0",
-    "clientVersion": "5.2.0",
+    "binaryVersion": "5.6.0",
+    "clientVersion": "5.6.0",
     "frontendLibrary": {
       "projectPath": "/frontend/",
       "initCommand": "npm install",

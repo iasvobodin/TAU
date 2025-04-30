@@ -6,7 +6,8 @@ const moduleType = {
   Modules: 3,
   PAZ: 4,
   TerminalBlocks: 5,
-  SupportPanels: 6
+  SupportPanels: 6,
+  Defective: 7
 }
 type P = keyof typeof moduleType
 // Функция для полученя текущей недели и года

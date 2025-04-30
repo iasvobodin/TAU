@@ -1,23 +1,29 @@
-const reconnectInterval = 5000 // интервал переподключения в миллисекундах
+import { io } from 'socket.io-client'
 
-export function connect() {
-  const ws = new WebSocket('ws://localhost:3000/ws')
+export const connect = async () => {
+  const socket = io('ws://10.69.19.59:3000', {
+    extraHeaders: {
+      'x-api-key': 'your-secret-api-key-12345'
+    }
+  })
 
-  ws.onmessage = (event) => {
-    console.log('Сообщение от сервера:', event.data)
-  }
-
-  ws.onopen = () => {
+  socket.on('connect', () => {
     console.log('WebSocket соединение установлено')
-    ws.send('Привет, сервер!')
-  }
+    socket.send('Привет, сервер!')
+  })
 
-  ws.onerror = (error) => {
-    console.error('Ошибка WebSocket:', error)
-  }
+  socket.on('message', (data) => {
+    // localServerPID.value = data.split(':')[1];
+    console.log('Сообщение от сервера:', data)
+  })
 
-  ws.onclose = () => {
+  socket.on('disconnect', async () => {
+    // await startServerProcess();
     console.log('WebSocket соединение закрыто. Попытка переподключения...')
-    setTimeout(connect, reconnectInterval)
-  }
+    setTimeout(connect, 5000)
+  })
+
+  socket.on('connect_error', (error) => {
+    console.error('Ошибка WebSocket:', error)
+  })
 }

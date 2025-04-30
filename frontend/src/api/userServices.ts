@@ -7,17 +7,17 @@ import type { Prisma, User, Product } from '../../../extensions/src'
 // }
 
 export const getUser = async (Login: string): Promise<ApiResponse<User>> => {
-  return get<User>(`http://localhost:3000/users/${Login}`)
+  return get<User>(`http://10.69.19.59:3000/users/${Login}`)
 }
 
 export const getUsers = async (): Promise<ApiResponse<User[]>> => {
-  return get<User[]>(`http://localhost:3000/users`)
+  return get<User[]>(`http://10.69.19.59:3000/users`)
 }
 
 export const createUser = async (
   user: Partial<Prisma.UserCreateInput>
 ): Promise<ApiResponse<Prisma.UserCreateInput>> => {
-  return post<Prisma.UserCreateInput>('http://localhost:3000/users', user)
+  return post<Prisma.UserCreateInput>('http://10.69.19.59:3000/users', user)
 }
 
 export const updateUser = async (id: number, user: Partial<User>): Promise<ApiResponse<User>> => {

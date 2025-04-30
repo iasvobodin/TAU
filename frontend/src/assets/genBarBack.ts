@@ -77,6 +77,7 @@ export const createDocWithBarcodes = async (
         children: [
           new ImageRun({
             data: data,
+            type: 'png',
             transformation: {
               width: 50 / 2.65,
               height: 50 / 2.65
@@ -148,6 +149,7 @@ export const createDocWithBarcodes = async (
         children: [
           new ImageRun({
             data: imageBuffer,
+            type: 'png',
             transformation: {
               width: 270 / 2.65,
               height: 50 / 2.65
@@ -164,6 +166,7 @@ export const createDocWithBarcodes = async (
           }),
           new ImageRun({
             data: data,
+            type: 'png',
             transformation: {
               width: 50 / 2.65,
               height: 50 / 2.65
@@ -274,6 +277,7 @@ export const createDocWithBarcodesTerminal = async (
         children: [
           new ImageRun({
             data: imageBuffer,
+            type: 'png',
             transformation: {
               width: 270 / 2.65,
               height: 50 / 2.65

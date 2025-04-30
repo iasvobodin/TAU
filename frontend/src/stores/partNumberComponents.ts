@@ -1,9 +1,7 @@
 import { defineStore } from 'pinia'
-import type { PartNumberComponent } from '../assets/interfaces'
 import { getPNComponents } from '@/api/partNumberComponentsServices'
-
-export const usePartNumberComponents = defineStore({
-  id: 'partNumberComponents',
+import type { PartNumberComponent } from '../../../extensions/src'
+export const usePartNumberComponents = defineStore('partNumberComponents', {
   state: () => ({
     partNumberComponents: null as PartNumberComponent[] | null
   }),

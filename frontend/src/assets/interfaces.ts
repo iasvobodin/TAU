@@ -1,90 +1,5 @@
 import type { Prisma } from '../../../extensions/src'
 
-export interface Component {
-  snComponent: string
-  pnComponentId: string
-  supplier: string
-  invoice: string
-  status: 'accepted' | 'issued' | 'defective' | 'shipped'
-  comment: string
-  user: string
-  snProductId?: string
-}
-
-export interface Operator {
-  login: string
-  status: string
-}
-
-export interface ProductionOperation {
-  stageType: string
-  status: string
-  operatorId: number
-  productId: number
-}
-
-export interface Product {
-  snProduct: string
-  operationId: number
-  specificationId: number
-  templateId: number
-  testId: number
-}
-
-export interface Specification {
-  version: number
-  productName: string
-  productMP: string
-  productMC: string
-  productMM: string
-  ElectronicBoard1: string
-  ElectronicBoard2: string
-  ElectronicBoard3: string
-  ElectronicBoard4: string
-  ElectronicBoard5: string
-  ElectronicBoard6: string
-  OtherCirciutry: string
-  EnclosureType: string
-  MountingScrew: string
-}
-
-export interface Operation {
-  version: number
-  productMC: string
-  issue: boolean
-  preProdaction: boolean
-  assembly: boolean
-  marking: boolean
-  functionalTest: boolean
-  verification: boolean
-  package: boolean
-}
-
-export interface Template {
-  version: number
-  productMC: string
-  markingTemplate: string
-  markingEquipment: string
-  stendForHiPot: string
-  stendForTest: string
-  verificationProtocol: string
-  RE: string
-  PS: string
-  boxLabel: string
-}
-
-export interface Test {
-  version: number
-  productMC: string
-  HiPot: string
-}
-
-export interface PartNumberComponent {
-  partNumber: string
-  descriptionRU: string
-  descriptionEN: string
-}
-
 ///for app
 export type SerialNumberData = {
   name: string
@@ -102,6 +17,15 @@ export type ModulesType =
   | 'PAZ'
   | 'TerminalBlocks'
   | 'SupportPanels'
+  | 'Defective'
+
+export type Barcodes = {
+  barcode: string
+  productName: string
+  partNumber: string
+  type: ModulesType
+  fileName?: string
+}
 
 export type StageType =
   | 'issue'
@@ -126,10 +50,11 @@ export type ProductAllPayload = Prisma.ProductGetPayload<{
   }
 }>
 
-type Information = {
+export type Information = {
   'SN изделия': string
   'Артикул изделия': string
   'Наименование изделия': string
+  'Тип изделия': ModulesType
 }
 export interface ProductType {
   specification: ProductAllPayload | null
@@ -139,4 +64,24 @@ export interface ProductType {
   qty: string | null
   serialNumbers: string[] | null
   failedStage?: string
+}
+
+type Specification = ProductAllPayload['specification']
+
+// Тип для преобразованного operation
+type Operation = Partial<ProductAllPayload['specification']['operation']>
+
+// Итоговый тип для трансформированной спецификации
+export type Tsp = {
+  id: number // Предполагаем, что id — это число (на основе sp.id)
+  snProduct: string // Предполагаем, что snProduct — строка
+  information: Information
+  specification: { [key: string]: { PN: string; SN: string } }
+  test: Specification['test']
+  template: Specification['template']
+  operation: Operation
+  productionOperations: ProductAllPayload['productionOperations']
+  components: ProductAllPayload['components']
+  productPartNumbers: string[]
+  productSerialNumbers: string[]
 }

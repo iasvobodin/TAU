@@ -126,6 +126,7 @@ export const generatePasport = async (
               children: [
                 new ImageRun({
                   data: imageTest,
+                  type: 'png',
                   transformation: {
                     width: 600 / 2.65,
                     height: 119 / 2.65

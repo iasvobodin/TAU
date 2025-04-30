@@ -1,6 +1,7 @@
 <template>
   <Teleport to="body">
-    <v-alert class="alert" v-if="errorMessage[0]" title="Ошибка" type="error">
+    <v-alert 
+     class="alert" v-if="errorMessage[0]" title="Ошибка" type="error" >
       <li v-for="(message, index) in errorMessage" :key="index">
         {{ message }}
       </li>
@@ -25,8 +26,10 @@ const infoMessage = computed(() => errorStore.infoMessages)
 <style scoped>
 .alert {
   position: fixed;
-  top: 0px;
+  top: 40px;
   width: 100%;
+  margin: auto;
   z-index: 9999;
+  opacity: 0,1;
 }
 </style>

@@ -1,5 +1,8 @@
 import { useErrorStore } from '@/stores/errorStore'
 
+// Укажи свой API-ключ здесь
+const API_KEY = 'your-secret-api-key-12345'
+
 export interface ApiResponse<T> {
   data: T | null
   error: string | null
@@ -21,8 +24,20 @@ export const fetchData = async <T>(
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> => {
   const errorStore = useErrorStore()
+
+  // Добавляем или объединяем заголовки с API-ключом
+  const headers = {
+    'x-api-key': API_KEY,
+    ...(options.headers || {}) // Сохраняем существующие заголовки, если есть
+  }
+
+  const updatedOptions = {
+    ...options,
+    headers
+  }
+
   try {
-    const response = await fetch(url, options)
+    const response = await fetch(url, updatedOptions)
     const result = await handleResponse<T>(response)
     return { data: result, error: null }
   } catch (err) {

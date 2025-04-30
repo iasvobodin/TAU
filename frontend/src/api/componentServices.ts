@@ -4,7 +4,7 @@ import type { Prisma, Component, Product } from '../../../extensions/src'
 export const createComponent = async (
   component: Prisma.ComponentUncheckedCreateInput
 ): Promise<ApiResponse<Component>> => {
-  return post<Component>('http://localhost:3000/components', component)
+  return post<Component>('http://10.69.19.59:3000/components', component)
 }
 
 export const createComponents = async (
@@ -15,12 +15,12 @@ export const createComponents = async (
 }
 
 export const fetchComponent = async (snComponent: string): Promise<ApiResponse<Component>> => {
-  return get<Component>(`http://localhost:3000/components/${snComponent}`)
+  return get<Component>(`http://10.69.19.59:3000/components/${snComponent}`)
 }
 
 export const updateComponent = async (
   snComponent: string,
   data: Prisma.ComponentUncheckedUpdateInput
 ): Promise<ApiResponse<Component>> => {
-  return put<Component>(`http://localhost:3000/components/${snComponent}`, data)
+  return put<Component>(`http://10.69.19.59:3000/components/${snComponent}`, data)
 }

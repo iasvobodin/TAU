@@ -60,6 +60,7 @@ model Product {
   snProduct              String                @unique @db.VarChar(255)
   specificationProductMP String                @db.VarChar(255)
   comment                String?               @db.VarChar(255)
+  orderToProduction      String?               @db.VarChar(255)
   components             Component[]
   specification          Specification         @relation(fields: [specificationProductMP], references: [productMP])
   productionOperations   ProductionOperation[]
@@ -121,6 +122,8 @@ model Template {
 model Test {
   id            Int             @id @default(autoincrement())
   version       Int
+  partNumber    String?         @db.VarChar(255)
+  checklist     String?         @db.VarChar(255)
   HiPot         String          @db.VarChar(255)
   specification Specification[]
 }

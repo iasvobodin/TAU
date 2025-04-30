@@ -74,6 +74,7 @@ const createDocWithBarcodes = async (barcodes: string[]) => {
         children: [
           new ImageRun({
             data: imageBuffer,
+            type: 'png',
             transformation: {
               width: 200,
               height: 100

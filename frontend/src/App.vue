@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, computed, watch, type Ref } from 'vue'
 import ToolBar from './components/ToolBar.vue'
-import { os, events, window as neuWindow } from '@neutralinojs/lib'
+import { os, filesystem, server, events, window as neuWindow } from '@neutralinojs/lib'
 import { useUserStore } from './stores/user'
 import { useErrorStore } from './stores/errorStore'
 import { usePartNumberComponents } from './stores/partNumberComponents'
 import ErrorComponent from '@/components/ErrorComponent.vue'
 import { RouterLink, RouterView } from 'vue-router'
-
+import { io } from 'socket.io-client'
+import { get, post, put, patch, del, type ApiResponse } from './api/apiService'
 const serverStats = reactive({
   localServer: { id: 0, pid: 0 },
   port: 0,
@@ -28,21 +29,28 @@ userStore.$subscribe(async (userExist, state) => {
   }
 })
 
-// const ws = new WebSocket('ws://localhost:3000/ws');
+// const ws = new WebSocket('ws://10.69.19.59:3000/ws');
 
 const checkIfServerRunning = async () => {
+  //   const fetchComponent = async (): Promise<ApiResponse> => {
+  //   return get(`http://10.69.19.59:3000/pid`)
+  // }
   console.log('checkIfServerRunning')
 
-  // try {
-  //   const response = await fetch('http://localhost:3000/pid')
-  //   if (response.ok) {
-  //     const data = await response.json()
-  //     localServerPID.value = data.pid as number
-  //     console.log('Сервер запущен port:3000 pid:', localServerPID.value)
-  //   }
-  // } catch (error) {
-  //   throw new Error('сервер не найден')
-  // }
+  try {
+    const response = await fetch('http://10.69.19.59:3000/pid', {
+      headers: {
+        'x-api-key': 'your-secret-api-key-12345'
+      }
+    })
+    if (response.ok) {
+      const data = await response.json()
+      localServerPID.value = data.pid as number
+      console.log('Сервер запущен port:3000 pid:', localServerPID.value)
+    }
+  } catch (error) {
+    throw new Error('сервер не найден')
+  }
 }
 const startServerProcess = async () => {
   console.log('startServerProcess')
@@ -100,6 +108,27 @@ const setEvents = () => {
     }
   })
 }
+const mountServer = async () => {
+  try {
+    await filesystem.readDirectory(window.NL_PATH + '/.tmp')
+  } catch (error) {
+    await filesystem.createDirectory(window.NL_PATH + '/.tmp')
+    await filesystem.createDirectory('./.tmp')
+  }
+  try {
+    const mounts = await server.getMounts()
+    console.log('Mounts:', mounts)
+    await server.mount('/.tmp', './.tmp')
+    console.log('server is mounted on /.tmp')
+    if (Array.isArray(mounts) && mounts.length === 0) {
+      console.log('No mounts found')
+      await server.mount('/.tmp', window.NL_PATH + '/.tmp')
+      console.log('server is mounted on /.tmp')
+    }
+  } catch (error) {
+    console.log(error)
+  }
+}
 
 const pattern = /^[А-ЯЁ][а-яё]+ [А-ЯЁ]\.[А-ЯЁ]\.$/
 const setTitle = async () => {
@@ -148,9 +177,35 @@ watch(localServerPID, async (newvalue, oldvalue) => {
     }
   }
 })
+// const connect = async () => {
+//   const socket = io('ws://10.69.19.59:3000', {
+//     extraHeaders: {
+//       'x-api-key': 'your-secret-api-key-12345'
+//     }
+//   });
 
+//   socket.on('connect', () => {
+//     console.log('WebSocket соединение установлено');
+//     socket.send('Привет, сервер!');
+//   });
+
+//   socket.on('message', (data) => {
+//     localServerPID.value = data.split(':')[1];
+//     console.log('Сообщение от сервера:', data);
+//   });
+
+//   socket.on('disconnect', async () => {
+//     await startServerProcess();
+//     console.log('WebSocket соединение закрыто. Попытка переподключения...');
+//     setTimeout(connect, 5000);
+//   });
+
+//   socket.on('connect_error', (error) => {
+//     console.error('Ошибка WebSocket:', error);
+//   });
+// }
 const connect = async () => {
-  const ws = new WebSocket('ws://localhost:3000/ws')
+  const ws = new WebSocket('ws://10.69.19.59:3000/ws')
 
   ws.onmessage = (event) => {
     localServerPID.value = event.data.split(':')[1]
@@ -158,23 +213,29 @@ const connect = async () => {
   }
 
   ws.onopen = () => {
+    errorStore.addInfo('Связь с сервером установлена')
+    setTimeout(errorStore.removeInfo, 5000)
     console.log('WebSocket соединение установлено')
     ws!.send('Привет, сервер!')
   }
 
   ws.onerror = (error) => {
+    errorStore.addError('Связь с сервером потеряна')
+    setTimeout(errorStore.removeError, 5000)
     console.error('Ошибка WebSocket:', error)
   }
 
   ws.onclose = async () => {
-    await startServerProcess()
+    // await startServerProcess()
     console.log('WebSocket соединение закрыто. Попытка переподключения...')
     setTimeout(connect, 5000)
   }
 }
 onMounted(async () => {
+  // checkIfServerRunning()
   setEvents()
   connect()
+  mountServer()
 })
 </script>
 
@@ -219,8 +280,6 @@ onMounted(async () => {
       </v-card-actions>
     </v-card>
   </v-dialog>
-  <!-- <ToolBar /> -->
-  <!-- <HelloWorld /> -->
 </template>
 
 <style scoped></style>

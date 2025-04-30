@@ -9,11 +9,36 @@ import specificationRoutes from "./routes/specification";
 import templateRoutes from "./routes/template";
 import testRoutes from "./routes/test";
 import partNumberComponentRoutes from "./routes/partNumberComponent";
+
 const options: AppOptions = {
   logger: true,
+  data_model: process.env.DATA_MODEL || "default_model",
+  log_level: process.env.LOG_LEVEL || "info",
+  enableTracing: process.env.ENABLE_TRACING === "true" || false,
 };
 
+// const app = await buildApp(options);
+
+const API_KEY = "your-secret-api-key-12345"; // Уникальный ключ для приложения
+
 const app = await buildApp(options);
+
+// Middleware для проверки API-ключа для HTTP-запросов
+app.addHook("preHandler", (request, reply, done) => {
+  // Публичные маршруты, которые не требуют API-ключа
+  const publicRoutes = ["/pid", "/ws"];
+  if (publicRoutes.includes(request.url)) {
+    done(); // Пропускаем проверку
+    return;
+  }
+
+  const clientApiKey = request.headers["x-api-key"];
+  if (!clientApiKey || clientApiKey !== API_KEY) {
+    reply.code(403).send({ error: "Доступ запрещён: неверный API-ключ" });
+    return;
+  }
+  done();
+});
 
 componentRoutes(app);
 operationRoutes(app);
@@ -56,9 +81,10 @@ const startServer = async (port: number | undefined) => {
   try {
     await app.listen({
       port: port,
-      host: "localhost",
+      host: "0.0.0.0",
     });
-    await Bun.write(Bun.stdout, `{"PORT":${port},"PID":${process.pid}}`);
+    // await Bun.write(Bun.stdout, `{"PORT":${port},"PID":${process.pid}}`);
+    console.log(`{"PORT":${port},"PID":${process.pid}}`);
   } catch (error: any) {
     if (error.code === "EADDRINUSE") {
       console.error(`Port ${port} is already in use, trying next port...`);

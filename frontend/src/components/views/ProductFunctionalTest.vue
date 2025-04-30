@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch, watchEffect, type Ref } from 'vue'
-import type { StageType, ProductType, ProductAllPayload } from '@/assets/interfaces'
+import type { StageType, ProductType, Tsp } from '@/assets/interfaces'
 import ProductInformation from '@/components/ProductInformation.vue'
 import { updateComponent } from '@/api/componentServices'
 import {
@@ -12,10 +12,9 @@ import { useErrorStore } from '@/stores/errorStore'
 import { fetchComponent } from '@/api/componentServices'
 import type { Component, Prisma } from '../../../../extensions/src'
 import { useUserStore } from '@/stores/user'
-import { type TransformSpecification } from '@/assets/transformSP'
 const props = defineProps<{
   information: ProductType['information']
-  product: TransformSpecification
+  product: Tsp
 }>()
 
 const emit = defineEmits<{

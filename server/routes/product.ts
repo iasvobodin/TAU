@@ -82,6 +82,33 @@ export default function productRoutes(app: FastifyInstance) {
     }
   });
 
+  app.get(
+    "/products/orderToProduction/:orderToProduction",
+    async (request, reply) => {
+      try {
+        const { orderToProduction } = request.params as {
+          orderToProduction: string;
+        }; // получаем параметр из URL
+        console.log(orderToProduction, "orderToProduction");
+
+        const products = await app.prisma.product.findMany({
+          where: { orderToProduction }, // фильтрация по полю orderToProduction
+          include: productInclude, // включает связанные данные, как в вашем примере
+        });
+
+        if (products.length > 0) {
+          reply.send(products);
+        } else {
+          reply.code(404).send({ error: "Продукты не найдены" });
+        }
+      } catch (error) {
+        console.log(error);
+
+        reply.code(500).send({ error: "Внутренняя ошибка сервера" });
+      }
+    }
+  );
+
   app.post<{ Body: Product }>("/products", async (request, reply) => {
     try {
       const data = request.body;
