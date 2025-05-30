@@ -5,19 +5,20 @@ import type { Prisma, User, Product } from '../../../extensions/src'
 //   Login: string
 //   Name: string
 // }
+const API_URL = import.meta.env.VITE_API_URL
 
 export const getUser = async (Login: string): Promise<ApiResponse<User>> => {
-  return get<User>(`http://10.69.19.59:3000/users/${Login}`)
+  return get<User>(`${API_URL}/users/${Login}`)
 }
 
 export const getUsers = async (): Promise<ApiResponse<User[]>> => {
-  return get<User[]>(`http://10.69.19.59:3000/users`)
+  return get<User[]>(`${API_URL}/users`)
 }
 
 export const createUser = async (
   user: Partial<Prisma.UserCreateInput>
 ): Promise<ApiResponse<Prisma.UserCreateInput>> => {
-  return post<Prisma.UserCreateInput>('http://10.69.19.59:3000/users', user)
+  return post<Prisma.UserCreateInput>(`${API_URL}/users`, user)
 }
 
 export const updateUser = async (id: number, user: Partial<User>): Promise<ApiResponse<User>> => {

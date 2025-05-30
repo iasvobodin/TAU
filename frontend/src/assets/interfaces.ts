@@ -5,8 +5,10 @@ export type SerialNumberData = {
   name: string
   partNumber: string
   invoice?: string
+  comment?: string
   supplier?: string
   _rejected?: boolean
+  status?: boolean
   _added?: boolean
 }
 
@@ -43,6 +45,7 @@ export type ProductAllPayload = Prisma.ProductGetPayload<{
         operation: true
         template: true
         test: true
+        checkList: true
       }
     }
     productionOperations: true
@@ -66,7 +69,7 @@ export interface ProductType {
   failedStage?: string
 }
 
-type Specification = ProductAllPayload['specification']
+export type Specification = ProductAllPayload['specification']
 
 // Тип для преобразованного operation
 type Operation = Partial<ProductAllPayload['specification']['operation']>
@@ -78,6 +81,7 @@ export type Tsp = {
   information: Information
   specification: { [key: string]: { PN: string; SN: string } }
   test: Specification['test']
+  checkList: Specification['checkList']
   template: Specification['template']
   operation: Operation
   productionOperations: ProductAllPayload['productionOperations']

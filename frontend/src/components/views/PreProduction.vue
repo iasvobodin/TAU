@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, type Ref } from 'vue'
 
 import { genSN } from '@/assets/generateSN'
-import { createDocWithBarcodes } from '@/assets/generateBarcode'
+import { createDocWithBarcodes } from '@/assets/barcodeGenerator'
+
 import { fetchComponent } from '@/api/componentServices'
 import { useErrorStore } from '@/stores/errorStore'
 import type { ModulesType, ProductAllPayload } from '@/assets/interfaces'
@@ -14,9 +15,19 @@ import {
   createProduct,
   fetchProductByOrderToProduction
 } from '@/api/productServices'
+import { server, filesystem, os, events, window as neuWindow } from '@neutralinojs/lib'
 
 const specification_qty = ref('')
 const allMatch = ref(false)
+
+type Barcodes = {
+  barcode: string // znp.data.snProduct
+  productName: string //znp.data.specification.productName
+  partNumber: string //znp.data.specification.productMP
+  type: ModulesType //znp.data.specification.type
+}[]
+
+const existBarcodes: Ref<Barcodes | null> = ref(null)
 
 interface Sp {
   sp: Specification | null
@@ -34,7 +45,7 @@ const specification: Sp = reactive({
   orderToProduction: null
 })
 
-const pattern = /^M[PS]\d{4}X1-[A-Z]{2}[123]_\d+_\d+.\d+.\d+$/
+const pattern = /^\d+.\d+.\d+_M[PS]\d{4}X1-[A-Z]{2}[123]_\d+$/
 
 // Массив для хранения всех серийных номеров
 const serialNumbersEnclosure = ref<string[]>([])
@@ -63,6 +74,7 @@ function checkComponentElectronicBoard2(data: ProductAllPayload[]) {
     )
   )
 }
+
 const printLabel = async () => {
   allMatch.value = false
   const { orderToProduction, qty, spPartNumber } = specification
@@ -78,10 +90,17 @@ const printLabel = async () => {
       allMatch.value = znp.data.every((product) => product.specification.productMP === spPartNumber)
       if (allMatch.value) {
         const elb2 = checkComponentElectronicBoard2(znp.data)
-        console.log(elb2, 'elb2')
+        console.log(elb2, 'elb2', znp.data)
 
         // Дальнейшие действия, если все продукты соответствуют артикулу
         console.log('все продукты соответствуют артикулу, ЗНП и количеству')
+
+        existBarcodes.value = znp.data.map((item) => ({
+          barcode: item.snProduct,
+          productName: item.specification.productName,
+          partNumber: item.specification.productMP,
+          type: item.specification.type
+        }))
       }
     } else {
       errorStore.addError('В данном З.Н.П. количество модулей не совпадает!')
@@ -90,13 +109,17 @@ const printLabel = async () => {
     }
   }
 }
+// 2.4.1_MP3221X1-BA1_2
+
 const prepareSpecification = async () => {
   //ВХОДНАЯ ТОЧКА
 
   if (pattern.test(specification_qty.value)) {
     //парсим строку для получения артикула количества и ЗНП
-    ;[specification.spPartNumber, specification.qty, specification.orderToProduction] =
+    ;[specification.orderToProduction, specification.spPartNumber, specification.qty] =
       specification_qty.value.split('_')
+    console.log(specification.orderToProduction, specification.spPartNumber, specification.qty)
+
     const result = await fetchSpecification(specification.spPartNumber)
     specification.sp = result.data
     updateTableData(specification)
@@ -132,33 +155,56 @@ const generateSNforOthers = async () => {
 }
 
 const createProductInDB = async (specification: Sp, enclosure: boolean = true) => {
-  //создаём изделия в базе, и обновляем корпуса в базе
+  // Создаём локальную копию объекта specification, чтобы избежать мутаций снаружи
+  const localSpec: Sp = {
+    ...specification,
+    serialNumbers: [...(specification.serialNumbers ?? [])]
+  }
 
-  for (const [index, sn] of specification.serialNumbers!.entries()) {
+  for (const [index, sn] of localSpec.serialNumbers!.entries()) {
+    console.log(`Iteration ${index}:`)
+    console.log('Current spPartNumber:', localSpec.spPartNumber)
+
     try {
-      //создаём продукт в базе
+      // создаём продукт в базе
+      console.log(
+        '//создаём продукт в базе',
+        sn,
+        localSpec.spPartNumber!,
+        localSpec.orderToProduction
+      )
       await createProduct({
         snProduct: sn,
-        specificationProductMP: specification.spPartNumber!,
-        orderToProduction: specification.orderToProduction
+        specificationProductMP: localSpec.spPartNumber!,
+        orderToProduction: localSpec.orderToProduction
       })
     } catch (error) {
-      console.log(error)
+      console.log(
+        error,
+        'ошибка создания продукта',
+        sn,
+        localSpec.spPartNumber!,
+        localSpec.orderToProduction
+      )
     }
+
     if (enclosure) {
+      console.log(serialNumbersEnclosure.value[index], 'enclosure update')
       try {
-        //обновляем корпус, привязываем к продукту в базе
+        // обновляем корпус, привязываем к продукту в базе
         await updateComponent(serialNumbersEnclosure.value[index], {
           status: 'passed',
           snProductId: sn
         })
       } catch (error) {
-        console.log(error)
+        console.log(error, 'ошибка обновления корпуса', serialNumbersEnclosure.value[index])
       }
     }
+
     console.log(`Index: ${index}, SN: ${sn}`)
   }
 }
+
 const saveDocument = async () => {
   if (specification.serialNumbers) {
     console.log(specification.serialNumbers)
@@ -170,21 +216,10 @@ const saveDocument = async () => {
         specification.spPartNumber!,
         specification.sp!.type as ModulesType
       )
-      //создаём изделия в базе
-
-      await createProductInDB(specification, false)
-      // for (const sn of specification.serialNumbers) {
-      //   try {
-      //     await createProduct({
-      //       snProduct: sn,
-      //       specificationProductMP: specification.spPartNumber!,
-      //       orderToProduction: specification.orderToProduction
-      //     })
-      //   } catch (error) {
-      //     console.log(error)
-      //   }
-      //   console.log(sn)
-      // }
+      //создаём изделия в базе, если их там нет
+      if (!allMatch.value) {
+        await createProductInDB(specification, false)
+      }
 
       clearState()
     } catch (error) {
@@ -255,6 +290,8 @@ const addSerialNumber = async () => {
     const isValid = await validateSerialNumber(serial)
     if (isValid) {
       serialNumbersEnclosure.value.push(serial)
+      console.log(serialNumbersEnclosure.value, 'here, we are pushed')
+
       updateTableData(specification)
       inputSerial.value = ''
     } else {
@@ -271,22 +308,31 @@ const generateSNforModules = async () => {
   const currentUniqueNumber = await generateCurrentUniqueNumder()
   //создаём серийные номера
   if (specification.sp && specification.qty) {
+    console.log('генерируем номера')
+
     specification.serialNumbers = genSN(
       specification.sp.type as ModulesType,
       +specification.qty,
       currentUniqueNumber
     )
   }
-  console.log(specification.serialNumbers)
-  //добавляем серийные номера в базу
+  console.log(specification.serialNumbers, 'сгенерированные номера')
+
   try {
-    createProductInDB(specification)
+    await createProductInDB(specification)
+    clearState()
   } catch (error) {
-    console.log(error)
+    console.log(error, 'ошибка при создании продукта')
   }
-  clearState()
 }
-const serialNumberInput = ref<InstanceType<typeof import('vuetify/components').VTextField> | null>(null);
+const serialNumberInput = ref<InstanceType<typeof import('vuetify/components').VTextField> | null>(
+  null
+)
+const openFile = async () => {
+  os.execCommand(
+    `explorer "\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\Софт\\прикладные документы\\TSC 300 руководство пользователя.pdf"`
+  )
+}
 onMounted(() => {
   serialNumberInput.value?.$el.querySelector('input')?.focus()
 })
@@ -294,14 +340,13 @@ onMounted(() => {
 
 <template>
   <h1>Подготовка производства</h1>
-  MP3204X1-BA1_3_1.1.1
   <v-divider class="border-opacity-50" color="info"></v-divider>
   <v-container>
     <v-row align="center" justify="center">
       <v-col> Отсканируйте штрих-код на заказе на производство <b>нажмите enter</b></v-col>
       <v-col>
         <v-text-field
-        ref="serialNumberInput"
+          ref="serialNumberInput"
           density="compact"
           v-model="specification_qty"
           hide-details="auto"
@@ -318,7 +363,16 @@ onMounted(() => {
   <v-container class="border rounded elevation-0" v-if="specification.sp">
     <v-row align="center">
       <v-col class="text-center">
-        <h3 class="text-h6">Детали заказа на производство {{ specification.orderToProduction }}</h3>
+        <h3 class="text-h5">Детали заказа на производство {{ specification.orderToProduction }}</h3>
+      </v-col>
+      <v-col class="text-right">
+        <v-tooltip text="Открыть руководство пользователя принтером" location="bottom">
+          <template v-slot:activator="{ props: activatorProps }">
+            <v-btn @click="openFile" color="gray" v-bind="activatorProps">
+              <v-icon left>mdi-printer</v-icon>
+            </v-btn>
+          </template>
+        </v-tooltip>
       </v-col>
     </v-row>
     <v-row align="center">
@@ -337,17 +391,9 @@ onMounted(() => {
       <v-col> Количество изделий </v-col>
       <v-col> {{ specification.qty }} </v-col>
     </v-row>
+    <v-row> </v-row>
   </v-container>
-  <v-container
-    v-if="
-      specification.sp?.type === 'Controller' ||
-      specification.sp?.type === 'PowerSupply' ||
-      specification.sp?.type === 'Modules' ||
-      specification.sp?.type === 'PAZ'
-    "
-    justify="center"
-    class="text-center"
-  >
+  <v-container v-if="specification.sp">
     <v-row v-if="!allMatch">
       <v-col>
         Отсканируйте серийные номера на корпусах изделий
@@ -386,21 +432,6 @@ onMounted(() => {
       </v-col>
     </v-row>
   </v-container>
-  <v-container v-else>
-    <v-row>
-      <v-col>
-        <v-btn
-          v-if="specification.qty"
-          :disabled="!!specification.serialNumbers"
-          @click="generateSNforOthers"
-          block
-          color="green-lighten-3"
-          >генерировать SN
-        </v-btn>
-      </v-col>
-    </v-row>
-    <!-- <v-row v-for="item in specification.serialNumbers" :key="item" align="center">
-      <v-col> {{ item }} </v-col>
-    </v-row> -->
-  </v-container>
+
+  <!-- MP3241X1-EA1_3_1.1.2 -->
 </template>

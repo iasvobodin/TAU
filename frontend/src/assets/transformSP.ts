@@ -144,6 +144,7 @@ export const transformSpecification = async (sp: ProductAllPayload) => {
     specification,
     test: sp.specification.test,
     template: sp.specification.template,
+    checkList: sp.specification.checkList,
     operation: Object.entries(sp.specification.operation)
       .filter(([key]) => order.includes(key))
       .sort(([keyA], [keyB]) => order.indexOf(keyA) - order.indexOf(keyB))

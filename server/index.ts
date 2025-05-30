@@ -1,3 +1,4 @@
+// src/server.ts
 import { buildApp } from "./app";
 import type { AppOptions } from "./app";
 import componentRoutes from "./routes/component";
@@ -9,6 +10,13 @@ import specificationRoutes from "./routes/specification";
 import templateRoutes from "./routes/template";
 import testRoutes from "./routes/test";
 import partNumberComponentRoutes from "./routes/partNumberComponent";
+import checkListRoutes from "./routes/checkList";
+import { config } from "dotenv";
+
+config({ path: `.env.${process.env.NODE_ENV || "development"}` });
+
+const PORT = parseInt(process.env.PORT || "3000", 10);
+const HOST = process.env.HOST || "localhost";
 
 const options: AppOptions = {
   logger: true,
@@ -17,21 +25,21 @@ const options: AppOptions = {
   enableTracing: process.env.ENABLE_TRACING === "true" || false,
 };
 
-// const app = await buildApp(options);
+const API_KEY = "your-secret-api-key-12345";
 
-const API_KEY = "your-secret-api-key-12345"; // Уникальный ключ для приложения
+const clients = new Map<
+  string,
+  { socket: any; clientId: string; lastActive: Date }
+>();
 
 const app = await buildApp(options);
 
-// Middleware для проверки API-ключа для HTTP-запросов
 app.addHook("preHandler", (request, reply, done) => {
-  // Публичные маршруты, которые не требуют API-ключа
   const publicRoutes = ["/pid", "/ws"];
   if (publicRoutes.includes(request.url)) {
-    done(); // Пропускаем проверку
+    done();
     return;
   }
-
   const clientApiKey = request.headers["x-api-key"];
   if (!clientApiKey || clientApiKey !== API_KEY) {
     reply.code(403).send({ error: "Доступ запрещён: неверный API-ключ" });
@@ -49,9 +57,25 @@ specificationRoutes(app);
 templateRoutes(app);
 testRoutes(app);
 partNumberComponentRoutes(app);
+checkListRoutes(app);
+
+app.post("/shutdown", async (request, reply) => {
+  const clientApiKey = request.headers["x-api-key"];
+  if (!clientApiKey || clientApiKey !== API_KEY) {
+    return reply
+      .code(403)
+      .send({ error: "Доступ запрещён: неверный API-ключ" });
+  }
+
+  clients.forEach((client) => {
+    if (client.socket.readyState === 1) {
+      client.socket.send(JSON.stringify({ command: "shutdown" }));
+    }
+  });
+  reply.send({ message: "Команда shutdown отправлена всем клиентам" });
+});
 
 const startServer = async (port: number | undefined) => {
-  // получение PID для корректного заверщения работы сервера из приложения
   app.get("/pid", async (request, reply) => {
     try {
       const pid = process.pid;
@@ -61,19 +85,73 @@ const startServer = async (port: number | undefined) => {
     }
   });
 
-  // WebSocket маршрут
   app.get(
     "/ws",
     { websocket: true },
     (socket /* WebSocket */, req /* FastifyRequest */) => {
+      let clientId: string | null = null;
+
       socket.on("message", (message) => {
-        console.log("Получено сообщение:", message);
-        // message.toString() === 'hi from client'
-        const pid = process.pid;
-        socket.send(`PID:${pid}`);
+        try {
+          const messageStr = message.toString();
+          // Проверяем, является ли сообщение JSON
+          let data;
+          try {
+            data = JSON.parse(messageStr);
+          } catch {
+            // Обработка текстовых сообщений для обратной совместимости
+            if (messageStr === "Привет, сервер!") {
+              socket.send(
+                JSON.stringify({ command: "pid", value: process.pid })
+              );
+              console.log("Получено текстовое сообщение: Привет, сервер!");
+              return;
+            }
+            throw new Error("Неверный формат сообщения");
+          }
+
+          console.log("Получено сообщение:", data);
+
+          if (data.command === "appStarted") {
+            clientId = data.clientId;
+            clientId &&
+              clients.set(clientId, {
+                socket,
+                clientId,
+                lastActive: new Date(),
+              });
+            console.log(`Активных клиентов: ${clients.size}`);
+            socket.send(JSON.stringify({ command: "pid", value: process.pid }));
+          } else if (data.command === "heartbeat") {
+            if (clientId) {
+              clients.set(clientId, {
+                ...clients.get(clientId)!,
+                lastActive: new Date(),
+              });
+            }
+          } else {
+            socket.send(JSON.stringify({ error: "Неизвестная команда" }));
+          }
+        } catch (err) {
+          console.error("Ошибка обработки сообщения:", err);
+          socket.send(JSON.stringify({ error: "Неверный формат сообщения" }));
+        }
       });
+
       socket.on("close", () => {
-        console.log("WebSocket соединение закрыто");
+        if (clientId) {
+          clients.delete(clientId);
+          console.log(
+            `Клиент ${clientId} отключён. Активных клиентов: ${clients.size}`
+          );
+        }
+      });
+
+      socket.on("error", (err) => {
+        console.error("Ошибка WebSocket:", err);
+        if (clientId) {
+          clients.delete(clientId);
+        }
       });
     }
   );
@@ -81,9 +159,8 @@ const startServer = async (port: number | undefined) => {
   try {
     await app.listen({
       port: port,
-      host: "0.0.0.0",
+      host: HOST,
     });
-    // await Bun.write(Bun.stdout, `{"PORT":${port},"PID":${process.pid}}`);
     console.log(`{"PORT":${port},"PID":${process.pid}}`);
   } catch (error: any) {
     if (error.code === "EADDRINUSE") {
@@ -96,4 +173,4 @@ const startServer = async (port: number | undefined) => {
   }
 };
 
-startServer(3000);
+startServer(PORT);

@@ -13,7 +13,7 @@ const tab = ref(null)
   <v-tabs align-tabs="title" v-model="current" bg-color="primary">
     <v-tab :value="InputControl">Входной контроль</v-tab>
     <v-tab :value="PreProduction">Подготовка производства</v-tab>
-    <v-tab :value="AssemblyView">Сборка</v-tab>
+    <v-tab :value="AssemblyView">Производство</v-tab>
     <v-tab :value="DevView">Отладка</v-tab>
   </v-tabs>
   <div class="container">

@@ -3,6 +3,7 @@ import { onMounted, ref, watch, watchEffect, type Ref } from 'vue'
 import type { StageType, ProductType, Tsp } from '@/assets/interfaces'
 import ProductInformation from '@/components/ProductInformation.vue'
 import { updateComponent } from '@/api/componentServices'
+import ChecklistViewer from '../ChecklistViewerV2.vue'
 import {
   createProductionOperationPassed,
   createProductionOperationFailed,
@@ -40,6 +41,10 @@ watch(failedComponents, (e) => {
     productionOperationAlarm.value = ''
   }
 })
+console.log(
+  props.product.checkList?.checkListTemplate,
+  'props.product.checkList?.checkListTemplate'
+)
 
 watch(defectDialog, () => {
   if (defectDialog.value === false) {
@@ -55,7 +60,8 @@ const testPassed = async () => {
     status: 'passed',
     user: useUserStore().userFullName,
     productId: props.product.snProduct,
-    usedComponents: props.product.productSerialNumbers.join(', ')
+    usedComponents: props.product.productSerialNumbers.join(', '),
+    comment: checkList.value
   }
 
   const resultCreate = await createProductionOperationPassed(productionOperatioData)
@@ -133,6 +139,11 @@ const testFailed = async () => {
   //выходим
   emit('done')
 }
+const checkList = ref('')
+const saveCheckList = (e: string) => {
+  console.log(e)
+  checkList.value = e
+}
 </script>
 
 <template>
@@ -148,7 +159,17 @@ const testFailed = async () => {
   <v-container>
     <v-row>
       <v-col>
-        <v-btn @click="testPassed" color="green-lighten-3" block> Тестирование выполнено </v-btn>
+        <ChecklistViewer
+          @checkList="saveCheckList"
+          :template-string="props.product.checkList?.checkListTemplate!"
+        />
+      </v-col>
+    </v-row>
+    <v-row>
+      <v-col>
+        <v-btn :disabled="!checkList" @click="testPassed" color="green-lighten-3" block>
+          Тестирование выполнено
+        </v-btn>
       </v-col>
       <v-col>
         <v-btn @click="defectDialog = true" color="red-lighten-3" block>Брак</v-btn>

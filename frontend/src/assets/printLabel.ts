@@ -1,6 +1,6 @@
 import type { TransformSpecification } from '@/assets/transformSP'
 import type { ModulesType, Barcodes, ProductType } from '@/assets/interfaces'
-import { filesystem, window as neuWindow } from '@neutralinojs/lib'
+import { filesystem, resources, window as neuWindow } from '@neutralinojs/lib'
 import bwipjs from 'bwip-js'
 
 // Типизация входных параметров
@@ -24,6 +24,8 @@ interface WindowConfig {
 // Класс для работы с штрихкодами
 class BarcodeGenerator {
   static generateDataUrl(data: string): string {
+    data.endsWith('-02') ? data.slice(0, -3) : data
+
     const canvas = document.createElement('canvas')
     try {
       bwipjs.toCanvas(canvas, {
@@ -34,7 +36,7 @@ class BarcodeGenerator {
       })
       return canvas.toDataURL('image/png')
     } catch (error) {
-      throw new Error(`Ошибка генерации штрихкода: ${error}`)
+      throw new Error(`Ошибка генерации штрихкода: ${JSON.stringify(error)}`)
     }
   }
 }
@@ -48,11 +50,11 @@ class FileSystemManager {
   }
 
   async readTemplate(fileName: string): Promise<string> {
-    const templatePath = `${this.basePath}/frontend/dist/${fileName}.html`
+    const templatePath = `/frontend/dist/${fileName}.html`
     try {
-      return await filesystem.readFile(templatePath)
+      return await resources.readFile(templatePath)
     } catch (error) {
-      throw new Error(`Ошибка чтения шаблона ${fileName}: ${error}`)
+      throw new Error(`Ошибка чтения шаблона ${fileName}: ${JSON.stringify(error)}`)
     }
   }
 
@@ -63,7 +65,7 @@ class FileSystemManager {
       await filesystem.writeBinaryFile(outputPath, data)
       console.log(`Файл ${outputFile} успешно создан`)
     } catch (error) {
-      throw new Error(`Ошибка записи файла ${outputFile}: ${error}`)
+      throw new Error(`Ошибка записи файла ${outputFile}: ${JSON.stringify(error)}`)
     }
   }
 }
@@ -161,8 +163,16 @@ class LabelPrinter {
 
   private replaceTemplateValues(template: string, data: Barcodes): string {
     return template
-      .replace('${barcodeDataUrl}', BarcodeGenerator.generateDataUrl(data.barcode))
-      .replace('${LabelInfo.barcode}', data.barcode)
+      .replace(
+        '${barcodeDataUrl}',
+        BarcodeGenerator.generateDataUrl(
+          data.barcode.endsWith('-02') ? data.barcode.slice(0, -3) : data.barcode
+        )
+      )
+      .replace(
+        '${LabelInfo.barcode}',
+        data.barcode.endsWith('-02') ? data.barcode.slice(0, -3) : data.barcode
+      )
       .replace('${LabelInfo.partNumber}', data.partNumber)
       .replace('${LabelInfo.productName}', data.productName)
   }
@@ -176,7 +186,7 @@ class LabelPrinter {
       await neuWindow.create('/.tmp/print-label.html', this.windowConfig)
       console.log('Файл на печать успешно выведен')
     } catch (error) {
-      throw new Error(`Ошибка открытия окна: ${error}`)
+      throw new Error(`Ошибка открытия окна: ${JSON.stringify(error)}`)
     }
   }
 }
@@ -188,6 +198,8 @@ export const printLabel = async (props: Props): Promise<void> => {
   try {
     const processor = new LabelDataProcessor(props)
     const labelInfo = processor.process()
+    console.log(window.NL_PATH)
+
     const printer = new LabelPrinter(window.NL_PATH)
     await printer.print(labelInfo)
   } catch (error) {

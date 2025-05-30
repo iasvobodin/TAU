@@ -211,7 +211,15 @@ const openFolder = () => {
       </v-col>
     </v-row>
     <!-- :rules="[(value) => pattern.test(value) || 'Только цифры']" -->
-
+  </v-container>
+  <v-container
+    v-if="
+      props.information?.['Тип изделия'] === 'Controller' ||
+      props.information?.['Тип изделия'] === 'PowerSupply' ||
+      props.information?.['Тип изделия'] === 'Modules' ||
+      props.information?.['Тип изделия'] === 'PAZ'
+    "
+    >">
     <v-row
       v-if="component"
       justify="center"
@@ -231,8 +239,6 @@ const openFolder = () => {
         Для маркировки данного типа оборудования необходимо использовать
       </h2></v-row
     >
-  </v-container>
-  <v-container v-if="product">
     <v-row align="center">
       <v-col> Оснастка </v-col>
       <v-col> {{ product.template.markingEquipment }} </v-col>
@@ -241,6 +247,8 @@ const openFolder = () => {
       <v-col> Шаблон для печати </v-col>
       <v-col> <v-btn @click="openFolder" color="gray-lighten-3" block>Открыть папку</v-btn> </v-col>
     </v-row>
+  </v-container>
+  <v-container>
     <v-row>
       <v-col>
         <v-btn :disabled="!!!component" @click="markingPassed" color="green-lighten-3" block>

@@ -110,6 +110,7 @@ export default function productionOperationRoutes(app: FastifyInstance) {
               stageType: data.stageType,
               status: data.status,
               user: data.user,
+              comment: data.comment,
               usedComponents: data.usedComponents,
             },
           }

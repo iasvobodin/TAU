@@ -1,19 +1,147 @@
 <template>
   <h1>DEV</h1>
-  <button @click="readFile">readFile</button>
+  <!-- <button @click="readFile">readFile</button>
   <button @click="serverMount">mount server</button>
   <button @click="openFile">openFile</button>
   <button @click="createFile">createFile</button>
   <button @click="createWindow">createWindow</button>
   <button @click="copyDir">copyDir</button>
-  {{ files }}
+  {{ files }} -->
+  <!-- <v-btn color="success" @click="getSpecification" >getSpecification</v-btn> -->
+
+  <hr />
+
+  <br />
+
+  <br />
+  <v-container>
+    <v-row>
+      <v-col>
+        <h2>Создание и редактирование чеклистов для функциональных тестов</h2>
+      </v-col>
+    </v-row>
+    <v-row>
+      <v-col>
+        <p>Выберите артикул модуля для создания\редактирования чек-листа</p>
+      </v-col>
+    </v-row>
+    <v-row>
+      <v-col cols="12">
+        <v-select
+          density="compact"
+          v-model="selectedSP"
+          hide-details="auto"
+          :clearable="true"
+          label="Артикул"
+          :items="specifications?.map((e) => `${e?.productMP} ${e?.productName}`)"
+          variant="solo"
+        ></v-select>
+      </v-col>
+    </v-row>
+    <v-row v-if="selectedSP">
+      <v-col>
+        <ChecklistTemplateEditor
+          :initial-title="selectedSP.split(' ')[0]"
+          :initial-template-string="templateFromServer"
+          @template="doTemplate"
+        />
+      </v-col>
+    </v-row>
+    <hr />
+    <br />
+    <br />
+    <v-row v-if="selectedSP && templateCheckList">
+      <v-col>
+        <v-btn color="success" @click="showTemplate = !showTemplate">
+          показать полученный чек лист для примера
+        </v-btn>
+      </v-col>
+    </v-row>
+    <v-row>
+      <v-col>
+        <keep-alive>
+          <ChecklistViewer v-if="showTemplate" :template-string="templateCheckList" />
+        </keep-alive>
+      </v-col>
+    </v-row>
+  </v-container>
+
+  <br />
+  <br />
 </template>
 
 <script setup lang="ts">
+import { fetchCheckList, updateCheckList } from '@/api/checkListServices'
+import type { Specification } from '@/assets/interfaces'
+import ChecklistViewer from '../ChecklistViewerV2.vue'
+import { fetchSpecifications } from '@/api/specificationServices'
+import ChecklistTemplateEditor from '../ChecklistTemplateEditorV2.vue'
 import { server, filesystem, os, events, window as neuWindow } from '@neutralinojs/lib'
-import { ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
+const showTemplate = ref(false)
+
+const templateCheckList = ref('')
+const doTemplate = async (e: string) => {
+  try {
+    await updateCheckList(selectedSP.value.split(' ')[0], {
+      checkListTemplate: e
+    })
+    console.log('event', e)
+  } catch (error) {
+    console.log(error)
+  }
+
+  templateCheckList.value = e
+}
+const specifications = ref<Specification[] | null>(null)
+const selectedSP = ref('')
+const templateFromServer = ref('')
+const checkListFromServer = ref<Specification['checkList'][] | null>(null)
+const getSpecification = async () => {
+  try {
+    const sp = await fetchSpecifications()
+    if (sp.data) {
+      specifications.value = sp.data
+      console.log(sp.data)
+
+      checkListFromServer.value = specifications.value?.map((e) => e.checkList)
+    }
+  } catch (error) {
+    console.log(error)
+  }
+}
+
+watch(
+  () => selectedSP.value,
+  async (newValue) => {
+    if (newValue) {
+      //попробовать запросить чек лист
+      try {
+        const result = await fetchCheckList(newValue.split(' ')[0])
+        console.log(newValue.split(' ')[0], result.data)
+        if (result.data?.checkListTemplate) {
+          templateFromServer.value = result.data?.checkListTemplate
+          templateCheckList.value = result.data?.checkListTemplate
+          console.log(templateCheckList.value, templateFromServer.value)
+        } else {
+          templateFromServer.value = ''
+          templateCheckList.value = ''
+        }
+      } catch (e) {
+        console.error('Invalid template string:', e)
+      }
+    }
+  },
+  { immediate: true }
+)
+
+onMounted(async () => {
+  await getSpecification()
+})
+
 const files = ref<filesystem.DirectoryEntry[]>([])
 const pdfData = ref<ArrayBuffer>()
+
 const serverMount = async () => {
   // await server.mount('/KD', '//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/КД');
   try {

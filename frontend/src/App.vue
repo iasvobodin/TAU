@@ -1,44 +1,78 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, computed, watch, type Ref } from 'vue'
 import ToolBar from './components/ToolBar.vue'
-import { os, filesystem, server, events, window as neuWindow } from '@neutralinojs/lib'
+import { app, os, filesystem, server, events, window as neuWindow } from '@neutralinojs/lib'
 import { useUserStore } from './stores/user'
 import { useErrorStore } from './stores/errorStore'
 import { usePartNumberComponents } from './stores/partNumberComponents'
 import ErrorComponent from '@/components/ErrorComponent.vue'
 import { RouterLink, RouterView } from 'vue-router'
-import { io } from 'socket.io-client'
-import { get, post, put, patch, del, type ApiResponse } from './api/apiService'
+import {useWebSocketStore} from './stores/websockets.ts'
+
+const API_URL = import.meta.env.VITE_API_URL as string
+const URL_WS = import.meta.env.VITE_URL_WS as string
+const wsStore = useWebSocketStore()
+
+
+// РАБОТА С ПОЛЬЗОВАТЕЛЯМИ
+const userStore = useUserStore()
+
+const showUserDialog = ref(false) // 👈 контроль показа вручную
+
+// следим за состоянием после загрузки данных
+watch(
+  () => userStore.isLoadingUser,
+  (loadingDone) => {
+    if (!loadingDone && (!userStore.userExist || !userStore.userFullName)) {
+      showUserDialog.value = true
+    }
+  }
+)
+
+
+const fullNameInput = ref('')
+const isValid = computed(() => /^[А-ЯЁ][а-яё]+ [А-ЯЁ]\.[А-ЯЁ]\.$/.test(fullNameInput.value))
+
+async function handleSaveFullName() {
+  await userStore.saveFullName(fullNameInput.value)
+  fullNameInput.value = ''
+}
+
+
+
 const serverStats = reactive({
   localServer: { id: 0, pid: 0 },
   port: 0,
   pid: 0
 })
-const ws: Ref<WebSocket | null> = ref(null)
-const userCheck = ref(false)
+
+// const ws = new WebSocket(`ws://${URL_WS}/ws`) 
+
+
+// const ws: Ref<WebSocket | null> = ref(null)
+// const userCheck = ref(false)
 const localServer: Ref<os.SpawnedProcess | null> = ref(null)
 const localServerPID: Ref<null | number> = ref(null)
-const userStore = useUserStore()
+
 const errorStore = useErrorStore()
 const userFullName = ref('')
 
-userStore.$subscribe(async (userExist, state) => {
-  if (state.userExist === false) {
-    console.log('NEED TO CREATE USER')
-    userCheck.value = true
-  }
-})
+// userStore.$subscribe(async (userExist, state) => {
+//   if (state.userExist === false) {
+//     console.log('NEED TO CREATE USER')
+//     userCheck.value = true
+//   }
+// })
 
-// const ws = new WebSocket('ws://10.69.19.59:3000/ws');
 
 const checkIfServerRunning = async () => {
   //   const fetchComponent = async (): Promise<ApiResponse> => {
-  //   return get(`http://10.69.19.59:3000/pid`)
+  //   return get(`${API_URL}/pid`)
   // }
   console.log('checkIfServerRunning')
 
   try {
-    const response = await fetch('http://10.69.19.59:3000/pid', {
+    const response = await fetch(`${API_URL}/pid`, {
       headers: {
         'x-api-key': 'your-secret-api-key-12345'
       }
@@ -95,31 +129,71 @@ const killSpawnProcess = async (pid: number) => {
     console.error('Ошибка завершения процесса: ', err)
   }
 }
+const activeClients = new Map()
 
 const setEvents = () => {
-  events.on('windowClose', () => killSpawnProcess(localServerPID.value!))
+  // ПО МОЕМУ НЕ НУЖНО БОЛЬШЕ УБИВАТЬ СЕРВЕР
+  // events.on('windowClose', () => killSpawnProcess(localServerPID.value!))
 
   events.on('spawnedProcess', (evt) => {
-    // console.log(evt)
+    console.log(evt,'ПРОВЕРКА НА СПОРНОЕ EVT')
 
     //проверяем ответ сервера, нам нужен его PID
     if (typeof evt.detail.data === 'object' && JSON.parse(evt.detail.data).PID) {
       localServerPID.value = JSON.parse(evt.detail.data).PID
     }
   })
+
+  events.on('clientConnect', (client) => {
+    const clientId = client.target // уникальный id клиента (обычно генерируется самим Neutralino)
+    const connectedAt = Date.now()
+
+    activeClients.set(clientId, { connectedAt })
+
+    console.log(`Client connected: ${clientId}, всего клиентов: ${activeClients.size}`)
+  })
+
+  events.on('clientDisconnect', (client) => {
+    const clientId = client
+    activeClients.delete(clientId)
+    console.log(`Client disconnected: ${clientId}, осталось клиентов: ${activeClients.size}`)
+  })
+
+
+
+  events.on('shutdown', () => {
+    console.log('Получена команда на завершение работы');
+    app.exit(); // Закрытие приложения
+});
+
+events.on('pidReceived', (event: CustomEvent<number>) => {
+  localServerPID.value = event.detail
+  console.log('Получен PID от сервера:', event.detail)
+})
 }
+
+
+
+
+
 const mountServer = async () => {
   try {
-    await filesystem.readDirectory(window.NL_PATH + '/.tmp')
+    const dirTAU = await filesystem.readDirectory(
+      '//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ'
+      // {recursive: true}
+    )
+    // console.log(dirTAU)
+    const dirTMP = await filesystem.readDirectory(window.NL_PATH + '/.tmp')
+    console.log(dirTMP)
   } catch (error) {
-    await filesystem.createDirectory(window.NL_PATH + '/.tmp')
-    await filesystem.createDirectory('./.tmp')
+    const createDir = await filesystem.createDirectory(window.NL_PATH + '/.tmp')
+    console.log(createDir)
   }
   try {
-    const mounts = await server.getMounts()
-    console.log('Mounts:', mounts)
     await server.mount('/.tmp', './.tmp')
     console.log('server is mounted on /.tmp')
+    const mounts = await server.getMounts()
+    console.log('Mounts:', mounts)
     if (Array.isArray(mounts) && mounts.length === 0) {
       console.log('No mounts found')
       await server.mount('/.tmp', window.NL_PATH + '/.tmp')
@@ -140,28 +214,28 @@ const setTitle = async () => {
   }
 }
 
-const createUserFullName = async () => {
-  try {
-    await userStore.createUserName({
-      Login: useUserStore().userName,
-      Name: userFullName.value
-    })
-    errorStore.addInfo('Данные добавлены в базу')
-    setTimeout(errorStore.removeInfo, 5000)
-    userCheck.value = false
-  } catch (error) {
-    console.log(error)
-  }
-}
-const isValid = computed(() => pattern.test(userFullName.value))
+// const createUserFullName = async () => {
+//   try {
+//     await userStore.createUserName({
+//       Login: useUserStore().userName,
+//       Name: userFullName.value
+//     })
+//     errorStore.addInfo('Данные добавлены в базу')
+//     setTimeout(errorStore.removeInfo, 5000)
+//     // userCheck.value = false
+//   } catch (error) {
+//     console.log(error)
+//   }
+// }
+// const isValid = computed(() => pattern.test(userFullName.value))
 
-watch(userCheck, (value) => {
-  console.log(value, 'userCheck')
-  if (!value) {
-    userStore.resetUserExist()
-    useUserStore().getUserName()
-  }
-})
+// watch(userCheck, (value) => {
+//   console.log(value, 'userCheck')
+//   if (!value) {
+//     userStore.resetUserExist()
+//     useUserStore().getUserName()
+//   }
+// })
 
 //только если сервер запущен
 watch(localServerPID, async (newvalue, oldvalue) => {
@@ -204,37 +278,72 @@ watch(localServerPID, async (newvalue, oldvalue) => {
 //     console.error('Ошибка WebSocket:', error);
 //   });
 // }
-const connect = async () => {
-  const ws = new WebSocket('ws://10.69.19.59:3000/ws')
+
+
+const connect = async (ws: WebSocket) => {
+  ws.onopen = () => {
+    errorStore.addInfo('Связь с сервером установлена');
+    setTimeout(errorStore.removeInfo, 1000);
+    console.log('WebSocket соединение установлено');
+    ws.send(
+      JSON.stringify({
+        command: 'appStarted',
+        timestamp: new Date().toISOString(),
+        user: useUserStore().userName,
+      })
+    );
+
+    // Периодическое отправление heartbeat
+    setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(
+          JSON.stringify({
+            command: 'heartbeat',
+            timestamp: new Date().toISOString(),
+          })
+        );
+      }
+    }, 30000); // Каждые 30 секунд
+  };
 
   ws.onmessage = (event) => {
-    localServerPID.value = event.data.split(':')[1]
-    console.log('Сообщение от сервера:', event.data)
-  }
-
-  ws.onopen = () => {
-    errorStore.addInfo('Связь с сервером установлена')
-    setTimeout(errorStore.removeInfo, 5000)
-    console.log('WebSocket соединение установлено')
-    ws!.send('Привет, сервер!')
-  }
+    try {
+      const data = JSON.parse(event.data);
+      if (data.command === 'pid') {
+        localServerPID.value = data.value;
+        console.log('Сообщение от сервера: PID =', data.value);
+      } else if (data.command === 'shutdown') {
+        console.log('Получена команда на завершение работы');
+        events.dispatch('shutdown', data);
+      } else {
+        console.log('Неизвестная команда:', data.command);
+      }
+    } catch (err) {
+      // Обратная совместимость для старого формата "PID:123"
+      if (typeof event.data === 'string' && event.data.startsWith('PID:')) {
+        localServerPID.value = parseInt(event.data.split(':')[1]);
+        console.log('Сообщение от сервера: PID =', localServerPID.value);
+      } else {
+        console.error('Ошибка обработки сообщения:', err);
+      }
+    }
+  };
 
   ws.onerror = (error) => {
-    errorStore.addError('Связь с сервером потеряна')
-    setTimeout(errorStore.removeError, 5000)
-    console.error('Ошибка WebSocket:', error)
-  }
+    errorStore.addError('Связь с сервером потеряна');
+    setTimeout(errorStore.removeError, 5000);
+    console.error('Ошибка WebSocket:', error);
+  };
 
   ws.onclose = async () => {
-    // await startServerProcess()
-    console.log('WebSocket соединение закрыто. Попытка переподключения...')
-    setTimeout(connect, 5000)
-  }
-}
+    console.log('WebSocket соединение закрыто. Попытка переподключения...');
+    setTimeout(() => connect(new WebSocket(`ws://${URL_WS}/ws`)), 5000);
+  };
+};
 onMounted(async () => {
-  // checkIfServerRunning()
-  setEvents()
-  connect()
+  userStore.getUserName()
+  wsStore.connect()
+  wsStore.initNeutralinoEvents()
   mountServer()
 })
 </script>
@@ -242,44 +351,38 @@ onMounted(async () => {
 <template>
   <ErrorComponent />
   <RouterView />
-  <v-dialog v-model="userCheck" max-width="500px">
-    <v-card>
-      <v-card-title><span class="text-h5">Login</span></v-card-title>
-      <v-container>
-        <v-row>
-          <v-col>
-            <p>
-              Вы вошли под учётной записью <b>{{ useUserStore().userName }}</b>
-            </p>
-            <p>Добавте фамилию и инициалы в базу данных</p>
-          </v-col>
-        </v-row>
-        <!-- <v-row>
-          <v-col>
-            
-          </v-col>
-        </v-row> -->
-        <v-row>
-          <v-col>
-            <v-text-field
-              density="compact"
-              v-model="userFullName"
-              hide-details="auto"
-              clearable
-              label="например Иванов И.И."
-              variant="solo"
-              :rules="[(value) => pattern.test(value) || 'не соответствует шаблону']"
-            ></v-text-field>
-          </v-col>
-        </v-row>
-      </v-container>
-      <v-card-actions>
-        <v-btn :disabled="!isValid" color="blue-darken-1" variant="text" @click="createUserFullName"
-          >Сохранить</v-btn
-        >
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+  <v-dialog v-model="showUserDialog" max-width="500px">
+  <v-card>
+    <v-card-title><span class="text-h5">Введите ФИО</span></v-card-title>
+    <v-container>
+      <v-row>
+        <v-col>
+          <p>Вы вошли как <b>{{ userStore.userName }}</b></p>
+          <p>Добавьте фамилию и инициалы</p>
+        </v-col>
+      </v-row>
+      <v-row>
+        <v-col>
+          <v-text-field
+            v-model="userStore.userFullName"
+            label="например Иванов И.И."
+            :rules="[v => /^[А-ЯЁ][а-яё]+ [А-ЯЁ]\.[А-ЯЁ]\.$/.test(v) || 'не соответствует шаблону']"
+            clearable
+          />
+        </v-col>
+      </v-row>
+    </v-container>
+    <v-card-actions>
+      <v-btn
+        :disabled="!userStore.isFullNameValid"
+        color="primary"
+        @click="handleSaveFullName"
+      >
+        Сохранить
+      </v-btn>
+    </v-card-actions>
+  </v-card>
+</v-dialog>
 </template>
 
 <style scoped></style>

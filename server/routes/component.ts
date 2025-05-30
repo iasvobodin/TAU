@@ -82,12 +82,9 @@ export default function componentRoutes(app: FastifyInstance) {
             .code(409)
             .send({ error: "Компонент с таким значением уже существует." });
         } else {
-          reply
-            .code(500)
-            .send({
-              error:
-                "Произошла ошибка при создании компонента: " + error.message,
-            });
+          reply.code(500).send({
+            error: "Произошла ошибка при создании компонента: " + error.message,
+          });
         }
       }
     }

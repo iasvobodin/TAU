@@ -1,29 +1,28 @@
 import type { Prisma, Product } from '../../../extensions/src'
 import type { ProductAllPayload } from '@/assets/interfaces'
 import { get, post, del, type ApiResponse } from './apiService'
+const API_URL = import.meta.env.VITE_API_URL
 
 type p = {
   snProduct: string
 }[]
 
 export const fetchProductLastSN = async (): Promise<ApiResponse<p>> => {
-  return get<p>(`http://10.69.19.59:3000/productlastsn`)
+  return get<p>(`${API_URL}/productlastsn`)
 }
 
 export const createProduct = async (
   product: Prisma.ProductUncheckedCreateInput
 ): Promise<ApiResponse<Product>> => {
-  return post<Product>('http://10.69.19.59:3000/products', product)
+  return post<Product>(`${API_URL}/products`, product)
 }
 
 export const fetchProduct = async (productSN: string): Promise<ApiResponse<ProductAllPayload>> => {
-  return get<ProductAllPayload>(`http://10.69.19.59:3000/products/${productSN}`)
+  return get<ProductAllPayload>(`${API_URL}/products/${productSN}`)
 }
 
 export const fetchProductByOrderToProduction = async (
   orderToProduction: string
 ): Promise<ApiResponse<ProductAllPayload>> => {
-  return get<ProductAllPayload>(
-    `http://10.69.19.59:3000/products/orderToProduction/${orderToProduction}`
-  )
+  return get<ProductAllPayload>(`${API_URL}/products/orderToProduction/${orderToProduction}`)
 }

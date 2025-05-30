@@ -49,7 +49,7 @@ async function test2() {
 }
 async function fetchJokes() {
   try {
-    const response = await fetch('http://10.69.19.59:3000/users')
+    const response = await fetch('${API_URL}/users')
     const jokes = await response.json()
     fff.value = jokes
   } catch (error) {
@@ -58,7 +58,7 @@ async function fetchJokes() {
 }
 
 async function createPartNumberComponent() {
-  const response = await fetch('http://10.69.19.59:3000/part-number-component', {
+  const response = await fetch('${API_URL}/part-number-component', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -79,7 +79,7 @@ async function createPartNumberComponent() {
 }
 
 async function getPartNumberComponents() {
-  const response = await fetch('http://10.69.19.59:3000/part-number-components')
+  const response = await fetch('${API_URL}/part-number-components')
 
   if (response.ok) {
     const data = await response.json()

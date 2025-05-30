@@ -4,8 +4,9 @@ import { usePartNumberComponents } from '../../stores/partNumberComponents'
 import { useSerialNumberStore } from '../../stores/serialNumberStore'
 import { useErrorStore } from '@/stores/errorStore'
 import { fetchSpecifications } from '@/api/specificationServices'
-import { createDocWithBarcodes } from '@/assets/generateBarcodeV2'
+import { createDocWithBarcodes } from '@/assets/barcodeGenerator'
 import type { ModulesType, SerialNumberData } from '@/assets/interfaces'
+import { server, filesystem, os, events, window as neuWindow } from '@neutralinojs/lib'
 const props = defineProps({
   invoice: {
     type: String,
@@ -34,11 +35,13 @@ const selectedPartNumber = ref('')
 const pattern = /^\d{8}(-\d{2})?$/
 
 const headers = reactive([
-  { title: 'Серийный номер', key: 'name', width: '20%', align: 'center' as const },
-  { title: 'Артикул', key: 'partNumber', width: '20%', align: 'center' as const },
-  { title: 'Инвойс', key: 'invoice', width: '20%', align: 'center' as const },
-  { title: 'Поставщик', key: 'supplier', width: '20%', align: 'center' as const },
-  { title: 'Удалить', key: 'actions', width: '20%', align: 'center' as const }
+  { title: 'Серийный номер', key: 'name', width: '15%', align: 'center' as const },
+  { title: 'Артикул', key: 'partNumber', width: '10%', align: 'center' as const },
+  { title: 'Инвойс', key: 'invoice', width: '10%', align: 'center' as const },
+  { title: 'Поставщик', key: 'supplier', width: '10%', align: 'center' as const },
+  { title: 'Комментарий', key: 'comment', width: '30%', align: 'center' as const },
+  { title: 'Брак', key: 'status', width: '5%', align: 'center' as const },
+  { title: 'Удалить', key: 'actions', width: '5%', align: 'center' as const }
 ])
 
 const defaultItem: SerialNumberData = reactive({ name: '', partNumber: '' })
@@ -87,6 +90,8 @@ const emitData = () => {
 }
 
 const checkSerialNumber = ($event: Event) => {
+  console.log(serialNumberStore.sNumbers)
+
   const target = $event.target as HTMLTextAreaElement
   {
     // if ((target.value.length === 8 || target.value.length === 11) && pattern.test(target.value)) {
@@ -164,6 +169,28 @@ serialNumberStore.$subscribe(async (isDuplicate, state) => {
     state.isDuplicate = false
   }
 })
+
+const rowProps = ({ item }: { item: SerialNumberData }) => {
+  console.log(item)
+
+  return {
+    class: {
+      'red-row': item.status
+    }
+  }
+}
+// Вычисляемое свойство для блокировки кнопки
+const isAddButtonDisabled = computed(() => {
+  return (
+    serialNumberStore.sNumbers.length === 0 ||
+    serialNumberStore.sNumbers.some((item: SerialNumberData) => item.status && !item.comment)
+  )
+})
+const openFile = async () => {
+  os.execCommand(
+    `explorer "\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\Операционные карты\\ОК МП-ТАУ-001-24 Входной контроль.pdf"`
+  )
+}
 </script>
 
 <template>
@@ -194,7 +221,7 @@ serialNumberStore.$subscribe(async (isDuplicate, state) => {
       </v-col>
     </v-row>
     <v-row align="center" justify="center">
-      <v-col>
+      <v-col cols="10">
         <v-text-field
           density="compact"
           clearable
@@ -207,6 +234,15 @@ serialNumberStore.$subscribe(async (isDuplicate, state) => {
           maxlength="13"
         ></v-text-field>
       </v-col>
+      <v-col cols="2" class="text-right">
+        <v-tooltip text="Открыть операционную карту" location="bottom">
+          <template v-slot:activator="{ props: activatorProps }">
+            <v-btn @click="openFile" color="gray" v-bind="activatorProps">
+              <v-icon color="blue" left>mdi-information</v-icon>
+            </v-btn>
+          </template>
+        </v-tooltip>
+      </v-col>
     </v-row>
     <!-- :rules="[(value) => pattern.test(value) || 'Только цифры']" -->
   </v-container>
@@ -217,35 +253,49 @@ serialNumberStore.$subscribe(async (isDuplicate, state) => {
     :headers="headers"
     density="compact"
     :items="serialNumberStore.sNumbers"
+    :row-props="rowProps"
   >
-    <!-- eslint-disable-next-line vue/valid-v-slot -->
+    <template v-slot:item.status="{ item }">
+      <v-checkbox hide-details v-model="item.status"></v-checkbox>
+    </template>
+    <template v-slot:item.comment="{ item }">
+      <v-textarea
+        variant="solo"
+        v-model="item.comment"
+        rows="1"
+        auto-grow
+        hide-details
+        density="compact"
+        class="text-center centered-textarea"
+      ></v-textarea>
+    </template>
     <template v-slot:item.supplier="{ item }">
       <p class="text-red" v-if="!item.supplier">ЗАПОЛНИТЬ</p>
       <p v-else>{{ item.supplier }}</p>
     </template>
-    <!-- eslint-disable-next-line vue/valid-v-slot -->
     <template v-slot:item.invoice="{ item }">
       <p class="text-red" v-if="!item.invoice">ЗАПОЛНИТЬ</p>
       <p v-else>{{ item.invoice }}</p>
     </template>
-    <!-- eslint-disable-next-line vue/valid-v-slot -->
     <template v-slot:item.actions="{ item }">
       <v-icon size="small" @click="deleteItem(item)">mdi-delete</v-icon>
       <v-icon v-if="item._added" icon="mdi-checkbox-marked-circle" color="green"></v-icon>
       <v-icon v-if="item._rejected" icon="mdi-cancel" color="red"></v-icon>
     </template>
   </v-data-table-virtual>
+
   <v-container>
+    <v-row v-if="isAddButtonDisabled && serialNumberStore.sNumbers.length !== 0">
+      <v-col>
+        <h4 class="text-center text-red">Заполните комментарий у бракованного компонента</h4>
+      </v-col>
+    </v-row>
     <v-row justify="center">
       <v-col>
-        <v-btn
-          :disabled="serialNumberStore.sNumbers.length === 0"
-          color="green-lighten-3"
-          @click="emitData"
-          block
+        <v-btn :disabled="isAddButtonDisabled" color="green-lighten-3" @click="emitData" block
           >Добавить</v-btn
         >
-        <v-btn color="yellow-lighten-3" @click="tryToPrint">Баркоды</v-btn>
+        <!--  <v-btn color="yellow-lighten-3" @click="tryToPrint">Баркоды</v-btn>-->
       </v-col>
 
       <!-- <v-col cols="12" md="6" sm="6">
@@ -254,3 +304,19 @@ serialNumberStore.$subscribe(async (isDuplicate, state) => {
     </v-row>
   </v-container>
 </template>
+
+<style>
+.red-row {
+  background-color: rgba(255, 0, 0, 0.123);
+}
+.centered-textarea {
+  display: flex;
+  justify-content: center; /* Центрирование по горизонтали */
+  width: 100%; /* Убедимся, что контейнер занимает всю ширину ячейки */
+}
+
+.centered-textarea textarea {
+  text-align: center; /* Сохраняем центрирование текста внутри textarea */
+  max-width: 100%; /* Ограничиваем ширину поля */
+}
+</style>

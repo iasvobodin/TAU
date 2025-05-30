@@ -9,6 +9,7 @@ export default function productRoutes(app: FastifyInstance) {
           specification: {
             include: {
               test: true,
+              checkList: true,
               template: true,
               operation: {
                 select: {
@@ -55,6 +56,7 @@ export default function productRoutes(app: FastifyInstance) {
         test: true,
         template: true,
         operation: true,
+        checkList: true,
       },
     },
     productionOperations: true,

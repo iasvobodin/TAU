@@ -11,22 +11,22 @@ datasource db {
 
 model User {
   id    Int    @id @default(autoincrement())
-  Login String @unique @db.VarChar(255)
-  Name  String @db.VarChar(255)
+  Login String @unique
+  Name  String
 }
 
 model Component {
   id                  Int                   @id @default(autoincrement())
-  snComponent         String                @unique @db.VarChar(255)
-  pnComponentId       String                @db.VarChar(255)
-  supplier            String                @db.VarChar(255)
-  invoice             String                @db.VarChar(255)
-  status              String                @db.VarChar(255)
-  comment             String                @db.VarChar(255)
+  snComponent         String                @unique
+  pnComponentId       String
+  supplier            String
+  invoice             String
+  status              String
+  comment             String
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
-  user                String                @db.VarChar(255)
-  snProductId         String?               @db.VarChar(255)
+  user                String
+  snProductId         String?
   pnComponent         PartNumberComponent   @relation(fields: [pnComponentId], references: [partNumber])
   snProduct           Product?              @relation(fields: [snProductId], references: [snProduct])
   ProductionOperation ProductionOperation[]
@@ -34,62 +34,63 @@ model Component {
 
 model PartNumberComponent {
   id            Int         @id @default(autoincrement())
-  partNumber    String      @unique @db.VarChar(255)
-  descriptionRU String      @db.VarChar(255)
-  descriptionEN String      @db.VarChar(255)
+  partNumber    String      @unique
+  descriptionRU String
+  descriptionEN String
   Component     Component[]
 }
 
 model ProductionOperation {
   id             Int        @id @default(autoincrement())
-  stageType      String     @db.VarChar(255)
+  stageType      String
   date           DateTime   @default(now())
-  status         String     @db.VarChar(255)
-  user           String     @db.VarChar(255)
-  productSN      String?    @db.VarChar(255)
-  comment        String?    @db.VarChar(255)
-  productId      String?    @db.VarChar(255)
-  componentId    String?    @db.VarChar(255)
-  usedComponents String?    @db.VarChar(255)
+  status         String
+  user           String
+  productSN      String?
+  comment        String?    @db.Text
+  productId      String?
+  componentId    String?
+  usedComponents String?
   component      Component? @relation(fields: [componentId], references: [snComponent], onDelete: NoAction, onUpdate: NoAction)
   product        Product?   @relation(fields: [productId], references: [snProduct])
 }
 
 model Product {
   id                     Int                   @id @default(autoincrement())
-  snProduct              String                @unique @db.VarChar(255)
-  specificationProductMP String                @db.VarChar(255)
-  comment                String?               @db.VarChar(255)
-  orderToProduction      String?               @db.VarChar(255)
+  snProduct              String                @unique
+  specificationProductMP String
+  comment                String?
+  orderToProduction      String?
   components             Component[]
   specification          Specification         @relation(fields: [specificationProductMP], references: [productMP])
   productionOperations   ProductionOperation[]
 }
 
 model Specification {
-  id               Int       @id @default(autoincrement())
+  id               Int        @id @default(autoincrement())
   version          Int
-  type             String?   @db.VarChar(255)
-  productName      String    @db.VarChar(255)
-  productMP        String    @unique @db.VarChar(255)
-  productMM        String    @db.VarChar(255)
-  electronicBoard1 String    @db.VarChar(255)
-  electronicBoard2 String    @db.VarChar(255)
-  electronicBoard3 String    @db.VarChar(255)
-  electronicBoard4 String    @db.VarChar(255)
-  electronicBoard5 String    @db.VarChar(255)
-  electronicBoard6 String    @db.VarChar(255)
-  otherCirciutry   String    @db.VarChar(255)
-  enclosureType    String    @db.VarChar(255)
-  mountingScrew    String    @db.VarChar(255)
-  packingBox       String    @db.VarChar(255)
-  operationId      Int       @default(1)
-  templateId       Int       @default(1)
-  testId           Int       @default(1)
+  type             String?
+  productName      String
+  productMP        String     @unique
+  productMM        String
+  electronicBoard1 String
+  electronicBoard2 String
+  electronicBoard3 String
+  electronicBoard4 String
+  electronicBoard5 String
+  electronicBoard6 String
+  otherCirciutry   String
+  enclosureType    String
+  mountingScrew    String
+  packingBox       String
+  operationId      Int        @default(1)
+  templateId       Int        @default(1)
+  testId           Int        @default(1)
   product          Product[]
-  operation        Operation @relation(fields: [operationId], references: [id])
-  template         Template  @relation(fields: [templateId], references: [id])
-  test             Test      @relation(fields: [testId], references: [id])
+  operation        Operation  @relation(fields: [operationId], references: [id])
+  template         Template   @relation(fields: [templateId], references: [id])
+  test             Test       @relation(fields: [testId], references: [id])
+  checkList        CheckList? // связь один-к-одному (может быть optional)
 }
 
 model Operation {
@@ -108,22 +109,34 @@ model Operation {
 model Template {
   id                   Int             @id @default(autoincrement())
   version              Int
-  markingTemplate      String          @db.VarChar(255)
-  markingEquipment     String          @db.VarChar(255)
-  stendForHiPot        String          @db.VarChar(255)
-  stendForTest         String          @db.VarChar(255)
-  verificationProtocol String          @db.VarChar(255)
-  RE                   String          @db.VarChar(255)
-  PS                   String          @db.VarChar(255)
-  boxLabel             String          @db.VarChar(255)
+  markingTemplate      String
+  markingEquipment     String
+  stendForHiPot        String
+  stendForTest         String
+  verificationProtocol String
+  RE                   String
+  PS                   String
+  boxLabel             String
   specification        Specification[]
 }
 
 model Test {
   id            Int             @id @default(autoincrement())
   version       Int
-  partNumber    String?         @db.VarChar(255)
-  checklist     String?         @db.VarChar(255)
-  HiPot         String          @db.VarChar(255)
+  partNumber    String?
+  checklist     String?
+  HiPot         String
   specification Specification[]
+}
+
+model CheckList {
+  id                Int           @id @default(autoincrement())
+  checkListTemplate String        @db.Text
+  doc_AssebbleOK    String?
+  doc_TestOK        String?
+  doc_ConstructKD   String?
+  doc_Passport      String?
+  doc_TemplateEZCAD String?
+  productMP         String        @unique
+  specification     Specification @relation(fields: [productMP], references: [productMP])
 }

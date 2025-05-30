@@ -19,30 +19,40 @@ const prepareDataToSend = (data: SerialNumberData[]) => {
       pnComponentId: e.partNumber,
       supplier: e.supplier!,
       invoice: e.invoice!,
-      status: 'accepted',
-      comment: '{}',
+      status: e.status ? 'failed' : 'accepted',
+      comment: e.comment ? e.comment : '{}',
       user: useUserStore().userFullName
     }
   })
 }
 
 const sendComponents = async () => {
-  const result = await createComponents(prepareDataToSend(useSerialNumberStore().sNumbers))
-  result.forEach((response, index) => {
-    console.log(response, index)
+  console.log(useSerialNumberStore().sNumbers, 'useSerialNumberStore().sNumbers')
+  console.log(
+    prepareDataToSend(useSerialNumberStore().sNumbers),
+    'prepareDataToSend(useSerialNumberStore().sNumbers)'
+  )
 
-    if (response.error) {
-      useSerialNumberStore().sNumbers[index]._rejected = true
-      useSerialNumberStore().sNumbers[index]._added = false
-    } else if (response.data) {
-      useSerialNumberStore().sNumbers[index]._added = true
-      useSerialNumberStore().sNumbers[index]._rejected = false
-    }
+  try {
+    const result = await createComponents(prepareDataToSend(useSerialNumberStore().sNumbers))
+    result.forEach((response, index) => {
+      // console.log(response, index)
 
-    sendingStatus.value = `Добавлено ${useSerialNumberStore().sNumbers.filter((e) => e._added === true).length},
+      if (response.error) {
+        useSerialNumberStore().sNumbers[index]._rejected = true
+        useSerialNumberStore().sNumbers[index]._added = false
+      } else if (response.data) {
+        useSerialNumberStore().sNumbers[index]._added = true
+        useSerialNumberStore().sNumbers[index]._rejected = false
+      }
+
+      sendingStatus.value = `Добавлено ${useSerialNumberStore().sNumbers.filter((e) => e._added === true).length},
         Отклонено ${useSerialNumberStore().sNumbers.filter((e) => e._rejected === true).length} `
-    //     }
-  })
+      //     }
+    })
+  } catch (error) {
+    console.log(error)
+  }
 }
 
 const AddArticleEmit = (e: SerialNumberData[]) => {

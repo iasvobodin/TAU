@@ -7,14 +7,12 @@ export const useUserStore = defineStore('user', {
   state: () => ({
     userName: '', // логин из ОС
     userExist: true, // существует ли пользователь в БД
-    userFullName: '', // ФИО из БД
-    isLoadingUser: false // 👈 добавили
+    userFullName: '' // ФИО из БД
   }),
   getters: {
     // Простой геттер — нужно ли спрашивать ФИО
     needsFullName(): boolean {
-      // 👇 пока грузится — не показываем диалог
-      return !this.isLoadingUser && (!this.userExist || !this.userFullName)
+      return !this.userExist || !this.userFullName
     },
     isFullNameValid: (state) => {
       const pattern = /^[А-ЯЁ][а-яё]+ [А-ЯЁ]\.[А-ЯЁ]\.$/
@@ -23,23 +21,22 @@ export const useUserStore = defineStore('user', {
   },
   actions: {
     async getUserName() {
-      this.isLoadingUser = true
       try {
         const login = await os.getEnv('USERNAME')
         this.userName = login
 
         const result = await getUser(login)
+
         if (result.data) {
           this.userFullName = result.data.Name
           this.userExist = true
         } else {
+          // Пользователь не найден
           this.userExist = false
         }
       } catch (err) {
-        console.error('Ошибка при получении пользователя', err)
+        console.error('Ошибка при получении имени пользователя:', err)
         this.userExist = false
-      } finally {
-        this.isLoadingUser = false // 👈 сброс
       }
     },
 

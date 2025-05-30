@@ -20,6 +20,7 @@
     "os.*",
     "window.*",
     "server.*",
+    "resources.*",
     "filesystem.*",
     "events.*",
     "extensions.*",

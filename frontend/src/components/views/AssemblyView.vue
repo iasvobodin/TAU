@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, shallowRef,onMounted, type Ref } from 'vue'
+import { reactive, ref, shallowRef, onMounted, type Ref } from 'vue'
 import { fetchProduct } from '@/api/productServices'
 import { fetchComponent } from '@/api/componentServices'
 import type { ProductType, ProductAllPayload, Tsp, Information } from '@/assets/interfaces'
@@ -36,7 +36,7 @@ const operationsMap = {
   marking: { name: 'Маркировка', component: ProductMarking },
   assembly: { name: 'Сборка', component: ProductAssembly },
   functionalTest: { name: 'Функциональное тестирование', component: ProductFunctionalTest },
-  package: { name: 'Упаковка', component: ProductPackage }
+  package: { name: 'Передача на склад', component: ProductPackage }
 }
 
 const selectOperation = (key: keyof typeof operationsMap) => {
@@ -133,7 +133,6 @@ const getProduct = async (cleared: boolean = true) => {
   if (cleared) {
     clear()
   }
-  // console.log(productSerialNumber.value, 'productSerialNumber.value')
 
   const result = await findTauSerialNumber(productSerialNumber.value)
 
@@ -209,11 +208,12 @@ const handleButtonClick = (step: number) => {
 }
 // :rules="[(value) => pattern.test(value) || 'не соответствует шаблону']"
 
-const serialNumberInput = ref<InstanceType<typeof import('vuetify/components').VTextField> | null>(null);
+const serialNumberInput = ref<InstanceType<typeof import('vuetify/components').VTextField> | null>(
+  null
+)
 onMounted(() => {
   serialNumberInput.value?.$el.querySelector('input')?.focus()
 })
-
 </script>
 
 <template>
@@ -221,18 +221,21 @@ onMounted(() => {
   <v-divider class="border-opacity-50" color="info"></v-divider>
   <v-container>
     <v-row align="center" justify="center">
-      <v-col>Отсканируйте штрих-код c серийным номером продукта и <b>нажмите enter</b></v-col>
+      <v-col
+        >Отсканируйте штрих-код c серийным номером полуфабриката,или корпуса и
+        <b>нажмите enter</b></v-col
+      >
       <!-- TAU32243000001 -->
       <v-col>
         <v-text-field
-        ref="serialNumberInput"
+          ref="serialNumberInput"
           @keyup.enter="getProduct"
           @click:clear="removeProduct"
           density="compact"
           v-model="productSerialNumber"
           hide-details="auto"
           clearable
-          label="пример TAU29243000001"
+          label="TAU29243000001 или SN компонента"
           variant="solo"
         ></v-text-field>
       </v-col>
