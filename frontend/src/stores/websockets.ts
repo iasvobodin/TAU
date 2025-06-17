@@ -4,6 +4,7 @@ import { ref } from 'vue'
 import { events } from '@neutralinojs/lib'
 import { useUserStore } from './user'
 import { useErrorStore } from './errorStore'
+import { useCounterStore } from '@/stores/counter'
 
 const URL_WS = import.meta.env.VITE_URL_WS as string
 
@@ -11,9 +12,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const socket = ref<WebSocket | null>(null)
   const connected = ref(false)
   const reconnectDelay = 5000
-
   const userStore = useUserStore()
   const errorStore = useErrorStore()
+  const counterStore = useCounterStore()
 
   function connect() {
     if (socket.value && socket.value.readyState === WebSocket.OPEN) return
@@ -24,15 +25,10 @@ export const useWebSocketStore = defineStore('websocket', () => {
       connected.value = true
       errorStore.addInfo('WebSocket соединён')
       setTimeout(errorStore.removeInfo, 1000)
-      // получаем имя пользователя
-      await userStore.getUserName()
-
-      // отправляем информацию о подключении
+      //отправляем команду о запуске приложении
       send({
-        command: 'clientConnect',
-        timestamp: new Date().toISOString(),
-        user: userStore.userName,
-        fullName: userStore.userFullName || null
+        command: 'appStarted'
+        // в ответ получаем PID
       })
     }
 
@@ -41,8 +37,13 @@ export const useWebSocketStore = defineStore('websocket', () => {
         const data = JSON.parse(event.data)
         if (data.command === 'shutdown') {
           events.dispatch('shutdown', { detail: data })
-        } else {
-          console.log('Сообщение от сервера:', data)
+        }
+        if (data.command === 'pid') {
+          events.dispatch('pidReceived', { detail: data })
+        }
+        // 💬 Лог с сервера
+        if (data.type === 'server_log') {
+          events.dispatch('serverLog', { detail: data.log }) // log — это JSON-строка от Pino
         }
       } catch (e) {
         console.warn('Ошибка парсинга сообщения:', event.data)
@@ -76,17 +77,29 @@ export const useWebSocketStore = defineStore('websocket', () => {
   // Neutralino события
   function initNeutralinoEvents() {
     events.on('clientConnect', async (event) => {
-      console.log('Neutralino client connected:', event)
-
-      // повторная проверка пользователя
-      await userStore.getUserName()
-
+      console.log('Neutralino client connected')
+      connected.value && (await userStore.getUserName())
       send({
         command: 'clientConnect',
         timestamp: new Date().toISOString(),
         user: userStore.userName,
         fullName: userStore.userFullName || null
       })
+    })
+    events.on('serverLog', (event) => {
+      // event.detail — объект с ключом detail, в котором лежит строка
+      const logStr = event.detail.detail // <- вот эта строка
+      // console.log('👀 Получен лог:', logStr)
+
+      // Теперь парсим лог и добавляем в массив
+      try {
+        const logObj = JSON.parse(logStr)
+        // counterStore.logs.push(logObj);
+        counterStore.addLogs(logObj)
+      } catch {
+        // counterStore.logs.push('⚠️ Невалидный лог');
+        counterStore.addLogs('⚠️ Невалидный лог')
+      }
     })
   }
 

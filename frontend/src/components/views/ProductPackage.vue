@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import ProductInformation from '@/components/ProductInformation.vue'
-import type { Prisma } from '../../../../extensions/src'
+import type { Prisma } from '../../../../shared/src'
 import { createProductionOperationPassed } from '@/api/productionOperationServices'
 import { useUserStore } from '@/stores/user'
 import type { StageType, ProductType, Tsp } from '@/assets/interfaces'

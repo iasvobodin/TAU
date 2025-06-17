@@ -11,7 +11,7 @@ import {
 } from '@/api/productionOperationServices'
 import { useErrorStore } from '@/stores/errorStore'
 import { fetchComponent } from '@/api/componentServices'
-import type { Component, Prisma } from '../../../../extensions/src'
+import type { Component, Prisma } from '../../../../shared/src'
 import { useUserStore } from '@/stores/user'
 import type { ModulesType, Barcodes, ProductType, StageType, Tsp } from '@/assets/interfaces'
 import { printLabel } from '@/assets/printLabel'
@@ -58,7 +58,7 @@ const checkSerialNumber = async ($event: Event) => {
     //сбрасываем
     serialNumber.value = ''
     return
-  } else if (result.data.status === 'failed') {
+  } else if (result.data.status === 'on_hold') {
     // не тот компонент
     errorStore.addError(`Данный компонент забракован`)
     setTimeout(errorStore.removeError, 5000)
@@ -233,7 +233,7 @@ const assemblyFailed = async () => {
   const promises = failedComponents.value.map(async (fComponent) => {
     const productionOperatioData = {
       stageType,
-      status: 'failed',
+      status: 'on_hold',
       user: useUserStore().userFullName,
       componentId: fComponent,
       productSN: props.product.snProduct,
@@ -251,7 +251,7 @@ const assemblyFailed = async () => {
     //обновляем компонент со статусом брак, и отвязываем от продукта
     try {
       await updateComponent(fComponent, {
-        status: 'failed',
+        status: 'on_hold',
         snProductId: null //отвязываем бракованный компонент от продукта
       })
     } catch (error) {

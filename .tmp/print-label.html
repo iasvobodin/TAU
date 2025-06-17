@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Print Label</title>
+    <style>
+        body,
+        html {
+            transform: scale(2.1);
+            transform-origin: top left;
+            margin: 0;
+            padding: 0;
+            height: 20mm;
+            width: 30mm;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .label {
+            width: 27mm;
+            height: 18mm;
+            display: grid;
+            align-content: space-evenly;
+        }
+
+        .label img {
+            align-self: center;
+            justify-self: center;
+            row-gap: 1mm;
+            width: 100%;
+            height: 4mm;
+        }
+
+        p {
+            align-self: center;
+            font-size: 10mm;
+            text-align: center;
+            font-family: "Arial Narrow", Arial, sans-serif;
+            line-height: 1;
+            margin-block-start: 0px;
+            margin-block-end: 0px;
+        }
+
+        .p6 {
+            font-size: 7px;
+            justify-self: end;
+        }
+
+        .p7 {
+            font-size: 7px;
+        }
+
+        @media print {
+            @page {
+                size: 30mm 20mm;
+                margin: 0;
+            }
+
+            body,
+            html {
+                transform: scale(1);
+                width: 30mm;
+                height: 20mm;
+                margin: 0;
+                padding: 0;
+            }
+
+            .label {
+                width: 27mm;
+                height: 18mm;
+                margin: 0;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="label">
+        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAASIAAAAYCAYAAABeKPDJAAAAAXNSR0IArs4c6QAAAztJREFUeF7tm9Fy2zAMBJ3//+hmWtlxiQpaAJSnL5s3izZFHYHD4ah8PR6PX4/17+v58XX99fn1rex6mAbnjd+P98nuF+9P68me7671xvlf80Yc4/X4fIQHPXd3Hdn9svvctX7CZ3d8ins3zik/pnhN45n2P4s3eu5p/mT7eLo/vy9KRAdkhAMlbnU823iJ6LogdvGlBKqOVwtkN9Hpeei+XcLurq9K6NWCelngJKJ3OEhEKyFXA3G3EtPvu+PTdZMyyBQ0FRYaJ+Vwl3KXiJ4IZAGSSdgIXNYyTqXsXRs8TZRqJeniQJU2jlMiVJVDVdF1K/kU3+66JaJZIarGsYooZMjdkneaKNUNlIjOqZOUj0R04EaKjAiYcKzGsUQkEf1BICNMFdF1wlLhmiY6KVe6b1dZ2prZmi0xR4Gbtaqemq2pqyJaCZSUuUQkEUlE/+FUklqK6jgpEyosNE6KNCqn6aGKRCQRSUQS0U8MkHKZHr7QvBKRRCQRSUQS0RUP+B7RmyOmkpcqUbUFyMzLWMnoNQYyQeM4tQZ3r79rsk7x7a6bTo+yFolaLxon/G3NAoNlCZEF9jSxacPJtK1uXPV73USgROsGpkR0HmGa1Qcu3ffzqgRN+FL+EMEu61ARqYhaAVN4LyXOR97Ep4i+mnC0Xs3qlXIID1LkpwQnEUlEEtGqLKrKPzOVuwRI+JPyUBFlPdnzuq3ZAcRuYNqa2Zr9jcBuXlXj0dYsxB15QtPjzrsqTbe10CPqeRtTfKsJZ2u2ZkKWbxlOWetNSk+PKFFy00ozTZTqBqqIVEQqogtzMjOtds3JTKnQsXXVROt+r0s0WSWgypuZfBKRRCQRSUTpP4tWTcJui0CERYScEVpGqC0J7anZD7ya1ectHcWfp2ZPhFRENYVRNStJMe4qZJq/2lKTN+cLjcdO6RGBd0NKoEswWQtIrdXuOCWEiuhAYFdxdpWoRCQRLYGnR7Qmoh5RTcFRgaACIBFJRBLRSa5RYpCEpsQc9fJ6RHpE0LmM4so3q9+wVb2GaoJ/ymOhFpUCIYmjf1qhT61/Fz/6/XTdRPyk1KNypRab9qlrNZCX1l1fFcds3myfTuf9BnUTwC4F+qAsAAAAAElFTkSuQmCC" alt="Barcode" />
+        <p class="p8">Брак</p>
+    </div>
+
+    <script>
+        window.onload = function () {
+            window.print();
+        }
+    </script>
+</body>
+
+</html>

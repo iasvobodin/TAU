@@ -1,5 +1,5 @@
 import fp from "fastify-plugin";
-import { PrismaClient } from "../extensions/src";
+import { PrismaClient } from "../shared/src";
 
 // Интерфейс для параметров плагина
 interface PrismaPluginOptions {

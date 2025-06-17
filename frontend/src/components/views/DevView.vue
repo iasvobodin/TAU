@@ -1,84 +1,41 @@
-<template>
-  <h1>DEV</h1>
-  <!-- <button @click="readFile">readFile</button>
-  <button @click="serverMount">mount server</button>
-  <button @click="openFile">openFile</button>
-  <button @click="createFile">createFile</button>
-  <button @click="createWindow">createWindow</button>
-  <button @click="copyDir">copyDir</button>
-  {{ files }} -->
-  <!-- <v-btn color="success" @click="getSpecification" >getSpecification</v-btn> -->
-
-  <hr />
-
-  <br />
-
-  <br />
-  <v-container>
-    <v-row>
-      <v-col>
-        <h2>Создание и редактирование чеклистов для функциональных тестов</h2>
-      </v-col>
-    </v-row>
-    <v-row>
-      <v-col>
-        <p>Выберите артикул модуля для создания\редактирования чек-листа</p>
-      </v-col>
-    </v-row>
-    <v-row>
-      <v-col cols="12">
-        <v-select
-          density="compact"
-          v-model="selectedSP"
-          hide-details="auto"
-          :clearable="true"
-          label="Артикул"
-          :items="specifications?.map((e) => `${e?.productMP} ${e?.productName}`)"
-          variant="solo"
-        ></v-select>
-      </v-col>
-    </v-row>
-    <v-row v-if="selectedSP">
-      <v-col>
-        <ChecklistTemplateEditor
-          :initial-title="selectedSP.split(' ')[0]"
-          :initial-template-string="templateFromServer"
-          @template="doTemplate"
-        />
-      </v-col>
-    </v-row>
-    <hr />
-    <br />
-    <br />
-    <v-row v-if="selectedSP && templateCheckList">
-      <v-col>
-        <v-btn color="success" @click="showTemplate = !showTemplate">
-          показать полученный чек лист для примера
-        </v-btn>
-      </v-col>
-    </v-row>
-    <v-row>
-      <v-col>
-        <keep-alive>
-          <ChecklistViewer v-if="showTemplate" :template-string="templateCheckList" />
-        </keep-alive>
-      </v-col>
-    </v-row>
-  </v-container>
-
-  <br />
-  <br />
-</template>
-
 <script setup lang="ts">
 import { fetchCheckList, updateCheckList } from '@/api/checkListServices'
 import type { Specification } from '@/assets/interfaces'
-import ChecklistViewer from '../ChecklistViewerV2.vue'
 import { fetchSpecifications } from '@/api/specificationServices'
-import ChecklistTemplateEditor from '../ChecklistTemplateEditorV2.vue'
+import CheckListView from './CheckListView.vue'
+import DefectsView from './DefectsView.vue'
 import { server, filesystem, os, events, window as neuWindow } from '@neutralinojs/lib'
-import { onMounted, ref, watch } from 'vue'
-const showTemplate = ref(false)
+import { onMounted, shallowRef, ref, watch } from 'vue'
+import SettingsView from './SettingsView.vue'
+import AdminLog from '../AdminLog.vue'
+// import { printDocxFile } from '@/assets/printer'
+
+const dialog = ref(false)
+const closeDialogAndCheck = () => {
+  dialog.value = false
+}
+
+// .tmp\print-label.html
+const print = () => {
+  console.log('print')
+
+  // printDocxFile('.tmp/DC.docx')
+  //     .then(() => console.log('✔️ Печать завершена.'))
+  //     .catch((err) => console.error('Ошибка при печати:', err));
+}
+
+const current = shallowRef(CheckListView)
+
+const selectComponent = (component: string) => {
+  dialog.value = true
+  current.value = componentsMap[component] || null
+}
+
+const componentsMap: Record<string, any> = {
+  checklist: CheckListView,
+  defects: DefectsView,
+  settings: SettingsView
+}
 
 const templateCheckList = ref('')
 const doTemplate = async (e: string) => {
@@ -136,7 +93,7 @@ watch(
 )
 
 onMounted(async () => {
-  await getSpecification()
+  // await getSpecification()
 })
 
 const files = ref<filesystem.DirectoryEntry[]>([])
@@ -156,6 +113,7 @@ const serverMount = async () => {
   // await server.mount('/KD', './KD');
   // await events.on('trayMenuItemClicked', onTrayMenuItemClicked);
 }
+
 const readFile = async () => {
   pdfData.value = await filesystem.readBinaryFile(window.NL_PATH + '/temp/1.pdf')
   console.log(pdfData.value)
@@ -409,3 +367,59 @@ const createPDFJS = async () => {
 
 const tab = ref(null)
 </script>
+
+<template>
+  <h1>DEV</h1>
+  <v-container>
+    <v-row>
+      <v-col cols="12">
+        <v-btn block color="gray" @click="selectComponent('checklist')">
+          Создание и редактирование чеклистов для функциональных тестов
+        </v-btn>
+      </v-col>
+    </v-row>
+    <v-row>
+      <v-col cols="12">
+        <v-btn block color="gray" @click="selectComponent('defects')"> Работа с браком </v-btn>
+      </v-col>
+    </v-row>
+    <v-row>
+      <v-col cols="12">
+        <v-btn block color="gray" @click="dialog = true"> Работа с заказом на производство </v-btn>
+      </v-col>
+    </v-row>
+    <v-row>
+      <v-col cols="12">
+        <v-btn block color="gray" @click="selectComponent('settings')">
+          Настройки приложения
+        </v-btn>
+      </v-col>
+    </v-row>
+  </v-container>
+
+  <v-dialog :fullscreen="true" v-model="dialog" width="100%">
+    <v-toolbar color="white" density="compact">
+      <v-spacer></v-spacer>
+      <v-btn icon @click="closeDialogAndCheck">
+        <v-icon>mdi-close</v-icon>
+      </v-btn>
+    </v-toolbar>
+    <v-card>
+      <component :is="current" />
+      <template v-slot:actions> </template>
+    </v-card>
+  </v-dialog>
+
+  <AdminLog />
+
+  <!-- <button @click="readFile">readFile</button>
+  <button @click="serverMount">mount server</button>
+  <button @click="openFile">openFile</button>
+  <button @click="createFile">createFile</button>
+  <button @click="createWindow">createWindow</button>
+  <button @click="copyDir">copyDir</button>
+  {{ files }} -->
+  <!-- <v-btn color="success" @click="getSpecification" >getSpecification</v-btn> -->
+
+  <button @click="print">printDocxFile</button>
+</template>

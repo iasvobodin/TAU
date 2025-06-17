@@ -16,3 +16,4 @@ neutralino.js
 # Neutralinojs related files
 .storage
 *.log
+shared

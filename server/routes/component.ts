@@ -1,11 +1,33 @@
 import type { FastifyInstance } from "fastify";
 // import type { Component } from '../models/interfaces';
-import { type Component, Prisma } from "../../extensions/src";
+import { type Component, Prisma } from "../../shared/src";
 
 export default function componentRoutes(app: FastifyInstance) {
   app.get("/components", async (request, reply) => {
     try {
       const components = await app.prisma.component.findMany({
+        include: {
+          pnComponent: {
+            select: {
+              partNumber: true,
+              descriptionRU: true,
+            },
+          },
+          ProductionOperation: true,
+        },
+      });
+      reply.send(components);
+    } catch (error) {
+      reply.code(500).send({ error: "Failed to fetch components" });
+    }
+  });
+
+  app.get("/failed-components", async (request, reply) => {
+    try {
+      const components = await app.prisma.component.findMany({
+        where: {
+          status: "on_hold",
+        },
         include: {
           pnComponent: {
             select: {

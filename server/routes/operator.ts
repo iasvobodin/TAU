@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { type Prisma } from "../../extensions/src";
+import { type Prisma } from "../../shared/src";
 
 export default function operatorRoutes(app: FastifyInstance) {
   app.get("/users", async (request, reply) => {

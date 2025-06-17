@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { type CheckList, Prisma } from "../../extensions/src";
+import { type CheckList, Prisma } from "../../shared/src";
 
 export default function checkListRoutes(app: FastifyInstance) {
   app.get("/check-list", async (request, reply) => {

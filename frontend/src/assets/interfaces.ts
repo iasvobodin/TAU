@@ -1,4 +1,4 @@
-import type { Prisma } from '../../../extensions/src'
+import type { Prisma } from '../../../shared/src'
 
 ///for app
 export type SerialNumberData = {
@@ -53,12 +53,20 @@ export type ProductAllPayload = Prisma.ProductGetPayload<{
   }
 }>
 
+export type ComponentAllPayload = Prisma.ComponentGetPayload<{
+  include: {
+    pnComponent: true
+    ProductionOperation: true
+  }
+}>
+
 export type Information = {
   'SN изделия': string
   'Артикул изделия': string
   'Наименование изделия': string
   'Тип изделия': ModulesType
 }
+
 export interface ProductType {
   specification: ProductAllPayload | null
   information: Information | null
@@ -67,6 +75,7 @@ export interface ProductType {
   qty: string | null
   serialNumbers: string[] | null
   failedStage?: string
+  failed?: boolean
 }
 
 export type Specification = ProductAllPayload['specification']
@@ -88,4 +97,71 @@ export type Tsp = {
   components: ProductAllPayload['components']
   productPartNumbers: string[]
   productSerialNumbers: string[]
+}
+
+export const defectWorkflowMap = {
+  'Обнаружение брака': {
+    actionType: 'DetectDefect',
+    color: '#FF0000', // Красный (начало градиента)
+    desc: 'на любом из этапов производства'
+  },
+  Фиксация: {
+    actionType: 'RecordDefect',
+    color: '#FF4500', // Оранжево-красный,
+    desc: 'Оформление, фото, SN, номер партии'
+  },
+  Изоляция: {
+    actionType: 'IsolateDefect',
+    color: '#FF7F00', // Яркий оранжевый
+    desc: 'Прекращение сборки, маркировка, перемещение на доработку'
+  },
+  'Анализ причин': {
+    actionType: 'AnalyzeCause',
+    color: '#FFA500', // Оранжево-жёлтый
+    desc: 'Брак от поставщика, или брак на производстве'
+  },
+  'Создание рекламации': {
+    actionType: 'CreateClaim',
+    color: '#FFD700', // Золотистый
+    desc: 'Заполнение формы и отправка поставщику (подтверждение получения)'
+  },
+  'Ответ поставщика': {
+    actionType: 'SupplierResponse',
+    color: '#FFFF00', // Чистый жёлтый
+    desc: 'Подтверждение/отказ/уточнение'
+  },
+  Решение: {
+    actionType: 'ResolveIssue',
+    color: '#ADFF2F', // Желто-зелёный лайм
+    desc: 'Доработка / разбор / переделка / списание'
+  },
+  'Корректирующие действия': {
+    actionType: 'CorrectiveActions',
+    color: '#7CFC00', // Яркий салатовый
+    desc: 'Обучение, корректировка техпроцесса, смена инструмента и т.д.'
+  },
+  'Отчёт и закрытие': {
+    actionType: 'CloseAndReport',
+    color: '#00CC00', // Насыщенный зелёный
+    desc: 'Запись результатов, обновление статистики, закрытие инцидента'
+  }
+} as const
+
+export type DefectStage = keyof typeof defectWorkflowMap
+export type ActionType = (typeof defectWorkflowMap)[DefectStage]['actionType']
+export type StageColor = (typeof defectWorkflowMap)[DefectStage]['color']
+
+export type DefectHistoryAll = Prisma.DefectHistoryGetPayload<{
+  include: {
+    component: {
+      include: {
+        pnComponent: true
+      }
+    }
+  }
+}>
+
+// создаём новый тип, где заменим тип actionType
+export type DefectHistoryWithTypedAction = Omit<DefectHistoryAll, 'actionType'> & {
+  actionType: ActionType
 }

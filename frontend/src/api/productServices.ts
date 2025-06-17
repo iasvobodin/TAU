@@ -1,6 +1,6 @@
-import type { Prisma, Product } from '../../../extensions/src'
+import type { Prisma, Product } from '../../../shared/src'
 import type { ProductAllPayload } from '@/assets/interfaces'
-import { get, post, del, type ApiResponse } from './apiService'
+import { get, post, put, del, type ApiResponse } from './apiService'
 const API_URL = import.meta.env.VITE_API_URL
 
 type p = {
@@ -25,4 +25,11 @@ export const fetchProductByOrderToProduction = async (
   orderToProduction: string
 ): Promise<ApiResponse<ProductAllPayload>> => {
   return get<ProductAllPayload>(`${API_URL}/products/orderToProduction/${orderToProduction}`)
+}
+
+export const updateProduct = async (
+  snProduct: string,
+  data: Prisma.ProductUncheckedUpdateInput
+): Promise<ApiResponse<Product>> => {
+  return put<Product>(`${API_URL}/products/${snProduct}`, data)
 }

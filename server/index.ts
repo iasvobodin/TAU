@@ -11,15 +11,18 @@ import templateRoutes from "./routes/template";
 import testRoutes from "./routes/test";
 import partNumberComponentRoutes from "./routes/partNumberComponent";
 import checkListRoutes from "./routes/checkList";
+import defectHistoryRoutes from "./routes/defectHistory";
 import { config } from "dotenv";
+import { registerClient, createLogger } from "./logger";
 
 config({ path: `.env.${process.env.NODE_ENV || "development"}` });
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const HOST = process.env.HOST || "localhost";
+const logger = createLogger();
 
 const options: AppOptions = {
-  logger: true,
+  logger,
   data_model: process.env.DATA_MODEL || "default_model",
   log_level: process.env.LOG_LEVEL || "info",
   enableTracing: process.env.ENABLE_TRACING === "true" || false,
@@ -58,6 +61,7 @@ templateRoutes(app);
 testRoutes(app);
 partNumberComponentRoutes(app);
 checkListRoutes(app);
+defectHistoryRoutes(app);
 
 app.post("/shutdown", async (request, reply) => {
   const clientApiKey = request.headers["x-api-key"];
@@ -89,6 +93,8 @@ const startServer = async (port: number | undefined) => {
     "/ws",
     { websocket: true },
     (socket /* WebSocket */, req /* FastifyRequest */) => {
+      registerClient(socket);
+
       let clientId: string | null = null;
 
       socket.on("message", (message) => {
@@ -96,19 +102,14 @@ const startServer = async (port: number | undefined) => {
           const messageStr = message.toString();
           // Проверяем, является ли сообщение JSON
           let data;
-          try {
-            data = JSON.parse(messageStr);
-          } catch {
-            // Обработка текстовых сообщений для обратной совместимости
-            if (messageStr === "Привет, сервер!") {
-              socket.send(
-                JSON.stringify({ command: "pid", value: process.pid })
-              );
-              console.log("Получено текстовое сообщение: Привет, сервер!");
-              return;
-            }
-            throw new Error("Неверный формат сообщения");
-          }
+          data = JSON.parse(messageStr);
+
+          // if (data.command === "appStarted") {
+
+          // }
+          // const pid = JSON.stringify({ command: "pid", value: process.pid });
+          // socket.send(pid);
+          // console.log("SEND MESSAGE", pid);
 
           console.log("Получено сообщение:", data);
 
@@ -129,6 +130,7 @@ const startServer = async (port: number | undefined) => {
                 lastActive: new Date(),
               });
             }
+          } else if (data.command === "pid") {
           } else {
             socket.send(JSON.stringify({ error: "Неизвестная команда" }));
           }

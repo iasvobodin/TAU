@@ -1,5 +1,5 @@
 import { get, post, put, patch, del, type ApiResponse } from './apiService'
-import type { Prisma, ProductionOperation } from '../../../extensions/src'
+import type { Prisma, ProductionOperation } from '../../../shared/src'
 const API_URL = import.meta.env.VITE_API_URL
 
 export const createProductionOperationFailed = async (
@@ -26,8 +26,14 @@ export const deleteProductionOperation = async (id: number): Promise<ApiResponse
 
 export const fetchProductionOperationByProductSN = async (
   productSN: string
-): Promise<ApiResponse<ProductionOperation>> => {
-  return get<ProductionOperation>(`${API_URL}/production-operations/productSN/${productSN}`)
+): Promise<ApiResponse<ProductionOperation[]>> => {
+  return get<ProductionOperation[]>(`${API_URL}/production-operations/productSN/${productSN}`)
+}
+
+export const fetchFailedProductionOperations = async (): Promise<
+  ApiResponse<ProductionOperation[]>
+> => {
+  return get<ProductionOperation[]>(`${API_URL}/failed-production-operations`)
 }
 
 export const updateProductionOperation = async (

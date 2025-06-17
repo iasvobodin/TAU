@@ -12,7 +12,9 @@ import ProductInformation from '@/components/ProductInformation.vue'
 import { transformSpecification } from '@/assets/transformSP'
 import { generatePasport } from '@/assets/generatePasport'
 import { useErrorStore } from '@/stores/errorStore'
+import { useCounterStore } from '@/stores/counter'
 
+const counterStore = useCounterStore()
 const errorStore = useErrorStore()
 
 const productSerialNumber = ref('')
@@ -28,7 +30,7 @@ const product: ProductType = reactive({
   qty: null,
   spPartNumber: null,
   serialNumbers: null,
-  failedStage: ''
+  failed: false
 })
 const pattern = /^TAU\d{11}$/
 
@@ -49,6 +51,16 @@ const selectOperation = (key: keyof typeof operationsMap) => {
   }
 }
 
+const getButtonColor = (key: string, index: number) => {
+  if (hasProdductionOperation(key)) {
+    return 'blue'
+  } else if (currentStep.value !== index) {
+    return 'gray-lighten-3'
+  } else {
+    return 'green-lighten-3'
+  }
+}
+
 const hasProdductionOperation = (stageType: string) => {
   //ищем по ключу наличие производственных операций
   const stage = product.specification?.productionOperations.some((e) => e.stageType === stageType)
@@ -62,61 +74,71 @@ const closeDialogAndCheck = () => {
   getProduct(false)
 }
 
-const checkProductOnFailed = async (data: ProductAllPayload) => {
+// const checkProductOnFailed = async (data: ProductAllPayload) => {
+// // проверяем содержит ли продукт бракованные компоненты, так как поменялась логика, и компоненты теперь не отвязываются
+// product.failed = data.components.some(e => e.status === 'on_hold')
+// // console.log(promises,data.components,'promisespromisespromisespromises');
+
+//   try {
+//     errorStore.disableErrorOutput()
+
+//     // const { data: failedData } = await fetchProductionOperationByProductSN(data.snProduct)
+//     const failedData = data.productionOperations
+//     // data.comment === 'on_hold'
+
+//     if (Array.isArray(failedData) && failedData.length > 0) {
+//       // Ищем первый элемент с status 'on_hold'
+//       const failedItem = failedData.find((item) => item.status === 'on_hold')
+
+//       if ( data.comment === 'on_hold') {
+//         // Логика для случая, если хотя бы один элемент имеет status 'on_hold'
+//         // product.failed = 'on_hold' //failedItem.stageType
+//         return false
+//       }
+
+//       // Логика, если не найдено элементов с status 'on_hold'
+//       const acceptedItem = failedData.find((item) => item.status === 'accepted')
+//       if (acceptedItem) {
+//         console.log('Продукт принят, можно продолжить.')
+//         return true
+//       }
+//     }
+//   } catch (error) {
+//     console.error('Error in checkProductOnFailed:', error)
+//   } finally {
+//     errorStore.enableErrorOutput()
+//   }
+
+//   return true
+// }
+
+const tryFetchComponentThenProduct = async (snComponent: string) => {
   try {
-    errorStore.disableErrorOutput()
-
-    const { data: failedData } = await fetchProductionOperationByProductSN(data.snProduct)
-
-    if (Array.isArray(failedData) && failedData.length > 0) {
-      // Ищем первый элемент с status 'failed'
-      const failedItem = failedData.find((item) => item.status === 'failed')
-
-      if (failedItem) {
-        // Логика для случая, если хотя бы один элемент имеет status 'failed'
-        product.failedStage = failedItem.stageType
-        return false
-      }
-
-      // Логика, если не найдено элементов с status 'failed'
-      const acceptedItem = failedData.find((item) => item.status === 'accepted')
-      if (acceptedItem) {
-        console.log('Продукт принят, можно продолжить.')
-        return true
-      }
+    // пробуем запросить компонент
+    const result = await fetchComponent(snComponent)
+    // проверяем привязан ли он к продукту
+    const snId = result.data?.snProductId
+    if (snId) {
+      //если да, то возвращаем сам продукт
+      return await fetchProduct(snId)
     }
   } catch (error) {
-    console.error('Error in checkProductOnFailed:', error)
-  } finally {
-    errorStore.enableErrorOutput()
+    console.warn(`Component fetch failed for ${snComponent}:`, error)
   }
-
-  return true
+  return null
 }
 
 const findTauSerialNumber = async (input: string) => {
-  const tryFetchComponentThenProduct = async (id: string) => {
-    try {
-      const result = await fetchComponent(id)
-      const snId = result.data?.snProductId
-      if (snId) {
-        return await fetchProduct(snId)
-      }
-    } catch (error) {
-      console.warn(`Component fetch failed for ${id}:`, error)
-    }
-    return null
-  }
-
   if (pattern.test(input)) {
-    // TAUSN
+    // это сериёный номер тау TAUSN
     try {
+      //если да, то возвращаем сам продукт
       return await fetchProduct(input)
     } catch (error) {
       console.error('Product fetch failed:', error)
     }
   } else {
-    // NOT TAUSN
+    // просто какое-то число из инпута думаем что это корпус
     // Отключаем вывод ошибок перед запросом
     errorStore.disableErrorOutput()
     const result = await tryFetchComponentThenProduct(input)
@@ -124,12 +146,13 @@ const findTauSerialNumber = async (input: string) => {
     errorStore.enableErrorOutput()
     if (result) return result
 
-    // нефига не корпус, пробуем с -02
+    // нефига не корпус, значит уже собрали и это оригинальный серийник пробуем с -02
     return await tryFetchComponentThenProduct(input + '-02')
   }
 }
 
 const getProduct = async (cleared: boolean = true) => {
+  // с отчисткой стэйта
   if (cleared) {
     clear()
   }
@@ -148,7 +171,9 @@ const getProduct = async (cleared: boolean = true) => {
       'Тип изделия': result.data.specification.type as Information['Тип изделия']
     }
     //проверяем на брак
-    ;(await checkProductOnFailed(result.data)) && (product.specification = result.data)
+    product.failed = result.data.components.some((e) => e.status === 'on_hold')
+    product.specification = result.data
+
     if (product.specification) {
       if (Array.isArray(product.specification!.productionOperations)) {
         currentStep.value = product.specification!.productionOperations.length
@@ -159,6 +184,7 @@ const getProduct = async (cleared: boolean = true) => {
   result && result.error && (product.error = result.error)
   // }
 }
+
 const clear = () => {
   currentStep.value = 0
   Object.assign(product, {
@@ -168,7 +194,7 @@ const clear = () => {
     qty: null,
     spPartNumber: null,
     serialNumbers: null,
-    failedStage: ''
+    failed: false
   })
 }
 
@@ -183,15 +209,7 @@ const removeProduct = () => {
 // const handleButtonClic2k = (step: number) => {
 //   currentStep.value = step + 1
 // }
-const getButtonColor = (key: string, index: number) => {
-  if (hasProdductionOperation(key)) {
-    return 'blue'
-  } else if (currentStep.value !== index) {
-    return 'gray-lighten-3'
-  } else {
-    return 'green-lighten-3'
-  }
-}
+
 // Данные о кнопках
 const buttons = [
   { label: 'Button 1', step: 1 },
@@ -207,6 +225,8 @@ const handleButtonClick = (step: number) => {
   }
 }
 // :rules="[(value) => pattern.test(value) || 'не соответствует шаблону']"
+
+//настройка автофокуса в компоненте
 
 const serialNumberInput = ref<InstanceType<typeof import('vuetify/components').VTextField> | null>(
   null
@@ -243,17 +263,18 @@ onMounted(() => {
   </v-container>
   <div v-if="product.error">{{ product.error }}</div>
   <ProductInformation v-else-if="product.information" :information="tsp!.information" />
-  <v-container v-if="product.specification">
+  <v-container v-if="product.specification && !product.failed">
     <v-row align="center">
       <v-col>
         <h3>Список операций для данного продукта</h3>
       </v-col>
     </v-row>
+    <!-- кнопки с операциями -->
     <v-row v-for="(value, key, index) in tsp!.operation" :key="index">
       <template v-if="value && typeof value === 'boolean'">
         <v-col>
           <v-btn
-            :disabled="currentStep !== index"
+            :disabled="!counterStore.settings ? currentStep !== index : false"
             @click="selectOperation(key as keyof typeof operationsMap)"
             :color="getButtonColor(key, index)"
             block
@@ -284,16 +305,11 @@ onMounted(() => {
       </v-col>
     </v-row>
   </v-container>
-  <v-container v-if="product.failedStage">
+  <v-container v-if="product.failed">
     <v-row align="center">
       <v-col>
         <h2 class="text-red text-center ma-2 pa-2">
-          Продукт забракован на этапе
-          {{
-            operationsMap[
-              product.failedStage as keyof typeof operationsMap
-            ].name.toLocaleLowerCase()
-          }}. <br />
+          Продукт забракован <br />
           Обратитесь к инженеру по качеству!
         </h2>
         <!-- <v-btn block variant="outlined" @click="dialog = true" rounded="lg" size="large"

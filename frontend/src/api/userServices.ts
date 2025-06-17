@@ -1,5 +1,5 @@
 import { get, post, put, patch, del, type ApiResponse } from './apiService'
-import type { Prisma, User, Product } from '../../../extensions/src'
+import type { Prisma, User, Product } from '../../../shared/src'
 // export interface User {
 //   id: number
 //   Login: string

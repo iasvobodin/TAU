@@ -4,7 +4,9 @@ import InputControl from './views/InputControl.vue'
 import PreProduction from './views/PreProduction.vue'
 import AssemblyView from './views/AssemblyView.vue'
 import DevView from './views/DevView.vue'
+import { useCounterStore } from '@/stores/counter'
 
+const counterStore = useCounterStore()
 const current = shallowRef(InputControl)
 const tab = ref(null)
 </script>
@@ -14,12 +16,12 @@ const tab = ref(null)
     <v-tab :value="InputControl">Входной контроль</v-tab>
     <v-tab :value="PreProduction">Подготовка производства</v-tab>
     <v-tab :value="AssemblyView">Производство</v-tab>
-    <v-tab :value="DevView">Отладка</v-tab>
+    <v-tab v-if="counterStore.adminView" :value="DevView">Администрирование</v-tab>
   </v-tabs>
   <div class="container">
-    <!-- <KeepAlive> -->
-    <component :is="current"></component>
-    <!-- </KeepAlive> -->
+    <KeepAlive>
+      <component :is="current"></component>
+    </KeepAlive>
   </div>
 </template>
 

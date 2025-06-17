@@ -11,7 +11,7 @@ import {
 } from '@/api/productionOperationServices'
 import { useErrorStore } from '@/stores/errorStore'
 import { fetchComponent } from '@/api/componentServices'
-import type { Component, Prisma } from '../../../../extensions/src'
+import type { Component, Prisma } from '../../../../shared/src'
 import { useUserStore } from '@/stores/user'
 const props = defineProps<{
   information: ProductType['information']
@@ -105,7 +105,7 @@ const testFailed = async () => {
   const promises = failedComponents.value.map(async (fComponent) => {
     const productionOperatioData = {
       stageType,
-      status: 'failed',
+      status: 'on_hold',
       user: useUserStore().userFullName,
       componentId: fComponent,
       productSN: props.product.snProduct,
@@ -123,7 +123,7 @@ const testFailed = async () => {
 
     //обновляем компонент со статусом брак, и отвязываем от продукта
     const resultUpdate = await updateComponent(fComponent, {
-      status: 'failed',
+      status: 'on_hold',
       //отвязываем бракованный компонент от продукта
       snProductId: null
     })

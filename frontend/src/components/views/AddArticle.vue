@@ -171,7 +171,7 @@ serialNumberStore.$subscribe(async (isDuplicate, state) => {
 })
 
 const rowProps = ({ item }: { item: SerialNumberData }) => {
-  console.log(item)
+  // console.log(item)
 
   return {
     class: {
@@ -295,7 +295,7 @@ const openFile = async () => {
         <v-btn :disabled="isAddButtonDisabled" color="green-lighten-3" @click="emitData" block
           >Добавить</v-btn
         >
-        <!--  <v-btn color="yellow-lighten-3" @click="tryToPrint">Баркоды</v-btn>-->
+        <v-btn color="yellow-lighten-3" @click="tryToPrint">Баркоды</v-btn>
       </v-col>
 
       <!-- <v-col cols="12" md="6" sm="6">

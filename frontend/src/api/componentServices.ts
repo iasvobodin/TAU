@@ -1,5 +1,6 @@
 import { get, post, put, patch, del, type ApiResponse } from './apiService'
-import type { Prisma, Component, Product } from '../../../extensions/src'
+import type { Prisma, Component, Product } from '../../../shared/src'
+import type { ComponentAllPayload } from '@/assets/interfaces'
 const API_URL = import.meta.env.VITE_API_URL
 
 export const createComponent = async (
@@ -15,8 +16,14 @@ export const createComponents = async (
   return Promise.all(promises)
 }
 
-export const fetchComponent = async (snComponent: string): Promise<ApiResponse<Component>> => {
-  return get<Component>(`${API_URL}/components/${snComponent}`)
+export const fetchComponent = async (
+  snComponent: string
+): Promise<ApiResponse<ComponentAllPayload>> => {
+  return get<ComponentAllPayload>(`${API_URL}/components/${snComponent}`)
+}
+
+export const fetchFailedComponents = async (): Promise<ApiResponse<ComponentAllPayload[]>> => {
+  return get<ComponentAllPayload[]>(`${API_URL}/failed-components`)
 }
 
 export const updateComponent = async (

@@ -1,4 +1,4 @@
-import type { Prisma, CheckList } from '../../../extensions/src'
+import type { Prisma, CheckList } from '../../../shared/src'
 import { get, post, del, put, type ApiResponse } from './apiService'
 
 const API_URL = import.meta.env.VITE_API_URL

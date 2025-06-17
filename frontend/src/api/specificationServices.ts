@@ -1,4 +1,4 @@
-import type { Prisma, Specification, Product } from '../../../extensions/src'
+import type { Prisma, Specification, Product } from '../../../shared/src'
 import type { Specification as SP } from '@/assets/interfaces'
 const API_URL = import.meta.env.VITE_API_URL
 

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 // import type { Specification } from '../models/interfaces';
-import { Prisma, type Specification } from "../../extensions/src";
+import { Prisma, type Specification } from "../../shared/src";
 export default function specificationRoutes(app: FastifyInstance) {
   app.get("/specifications", async (request, reply) => {
     try {

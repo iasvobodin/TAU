@@ -1,5 +1,5 @@
 import type { FastifyReply } from "fastify";
-import { Prisma } from "../extensions/src";
+import { Prisma } from "../shared/src";
 
 export const handlePrismaError = (error: unknown, reply: FastifyReply) => {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {

@@ -7,7 +7,7 @@ import { createDocWithBarcodes } from '@/assets/barcodeGenerator'
 import { fetchComponent } from '@/api/componentServices'
 import { useErrorStore } from '@/stores/errorStore'
 import type { ModulesType, ProductAllPayload } from '@/assets/interfaces'
-import type { Specification } from '../../../../extensions/src'
+import type { Specification } from '../../../../shared/src'
 import { updateComponent } from '@/api/componentServices'
 import { fetchSpecification } from '@/api/specificationServices'
 import {

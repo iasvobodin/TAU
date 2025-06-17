@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue'
 import type { StageType, ProductType, ProductAllPayload, Tsp } from '@/assets/interfaces'
 import ProductInformation from '@/components/ProductInformation.vue'
 import type { Ref } from 'vue'
-import type { Component, Prisma } from '../../../../extensions/src'
+import type { Component, Prisma } from '../../../../shared/src'
 import {
   createProductionOperationPassed,
   createProductionOperationFailed
@@ -12,7 +12,10 @@ import { updateComponent } from '@/api/componentServices'
 import { useUserStore } from '@/stores/user'
 import { useErrorStore } from '@/stores/errorStore'
 import { fetchComponent } from '@/api/componentServices'
+import DefectDialog from '@/components/views/DefectDialog.vue'
 import { os, filesystem, server, events, window as neuWindow } from '@neutralinojs/lib'
+import { usePartNumberComponents } from '@/stores/partNumberComponents'
+
 const props = defineProps<{
   information: ProductType['information']
   product: Tsp
@@ -23,13 +26,25 @@ const emit = defineEmits<{
 }>()
 const failedComponents: Ref<string[]> = ref([])
 const serialNumber = ref('')
-const information = ref('')
+// const information = ref('')
 // const pattern = /^\d+$/
-const pattern = /^\d{8}(-\d{2})?$/
+// const pattern = /^\d{8}(-\d{2})?$/
 const component: Ref<Component | null> = ref(null)
 const errorStore = useErrorStore()
 const defectDialog = ref(false)
 const comment = ref('')
+const partNumberComponents = usePartNumberComponents()
+
+const stageType: StageType = 'marking'
+
+const hasProdductionOperation = (stageType: string) => {
+  //ищем по ключу наличие производственных операций
+  const stage = props.product.productionOperations.some((e) => e.stageType === stageType)
+  if (stage) {
+    return ' - Операция выполнена'
+  }
+  return false
+}
 
 const checkSerialNumber = async ($event: Event | string) => {
   //преобразуем тип входещей переменной
@@ -51,13 +66,13 @@ const checkSerialNumber = async ($event: Event | string) => {
     //ошибка с сервера, сьрасываем
     serialNumber.value = ''
     return
-  } else if (result.data.status === 'failed') {
+  } else if (result.data.status === 'on_hold') {
     errorStore.addError(`Данный компонент забракован`)
     setTimeout(errorStore.removeError, 5000)
     serialNumber.value = ''
   } else if (result.data.snProductId) {
     if (result.data.snProductId === props.product.snProduct) {
-      //вот тут уже корпус привязан
+      //вот туе уже все компоненты привязаны, надо проверять именно корпус!
       errorStore.addInfo(`Корпус уже привязан`)
       setTimeout(errorStore.removeInfo, 5000)
       serialNumber.value = result.data.snComponent
@@ -83,33 +98,44 @@ const checkSerialNumber = async ($event: Event | string) => {
   // }
 }
 
-const markingPassed = async () => {
+const failedMarking = (failedComponents: string[], cc: string) => {
+  comment.value = cc
+  console.log(comment.value)
+  debugger
+  marking('on_hold')
+}
+
+const marking = async (status: string) => {
   //создать новоую операцию по маркировке и привязать её к продукту
   const productionOperatioData: Prisma.ProductionOperationUncheckedCreateInput = {
     stageType: 'marking',
-    status: 'passed',
+    status,
     user: useUserStore().userFullName,
     productId: props.product.snProduct,
+    comment: comment.value || '{}',
     usedComponents: component.value!.snComponent
   }
 
-  const resultCreate = await createProductionOperationPassed(productionOperatioData)
-  console.log(resultCreate.data)
-  if (resultCreate.error) {
+  try {
+    await createProductionOperationPassed(productionOperatioData)
+  } catch (error) {
+    console.log(error)
     return
   }
+
   //привязать кмопонент корпуса к продукту
   const componentData = {
-    status: 'passed',
-    snProductId: props.product.snProduct
+    status,
+    snProductId: props.product.snProduct,
+    comment: comment.value || '{}'
   }
-
-  const resultUpdate = await updateComponent(component.value!.snComponent, componentData)
-  console.log(resultUpdate.data)
-
-  if (resultUpdate.error) {
+  try {
+    await updateComponent(component.value!.snComponent, componentData)
+  } catch (error) {
+    console.log(error)
     return
   }
+
   errorStore.addInfo(`Операция выполнена успешно`)
   setTimeout(errorStore.removeInfo, 5000)
   emit('done')
@@ -123,7 +149,7 @@ const markingFailed = async () => {
   //подгатавливаем объект
   const productionOperatioData = {
     stageType: 'marking',
-    status: 'failed',
+    status: 'on_hold',
     user: useUserStore().userFullName,
     componentId: serialNumber.value,
     productSN: props.product.snProduct,
@@ -140,7 +166,7 @@ const markingFailed = async () => {
   }
   //обновляем компонент со статусом брак
   const resultUpdate = await updateComponent(component.value!.snComponent, {
-    status: 'failed'
+    status: 'on_hold'
   })
   console.log(resultUpdate.data)
   if (resultUpdate.error) {
@@ -172,9 +198,17 @@ const clearState = () => {
 }
 
 onMounted(() => {
-  props.product.components.forEach((element) => {
-    checkSerialNumber(element.snComponent!)
-  })
+  if (!hasProdductionOperation(stageType)) {
+    // если заходим в режиме администрирования то запрашивает 4 раза
+    props.product.components.forEach((element) => {
+      if (
+        partNumberComponents.enclosuretNumbers &&
+        partNumberComponents.enclosuretNumbers.some((e) => e.partNumber === element.pnComponentId)
+      ) {
+        checkSerialNumber(element.snComponent!)
+      }
+    })
+  }
 })
 const openFolder = () => {
   os.execCommand(
@@ -187,7 +221,7 @@ const openFolder = () => {
   <v-container>
     <v-row justify="center">
       <v-col>
-        <h1 class="text-center">Маркировка</h1>
+        <h1 class="text-center">Маркировка {{ hasProdductionOperation(stageType) }}</h1>
       </v-col>
     </v-row>
   </v-container>
@@ -198,6 +232,7 @@ const openFolder = () => {
       <v-col>Отсканируйте штрих-код c заводским номером корпуса</v-col>
       <v-col>
         <v-text-field
+          :disabled="!!hasProdductionOperation(stageType)"
           @click:clear="clearState"
           density="compact"
           clearable
@@ -219,7 +254,7 @@ const openFolder = () => {
       props.information?.['Тип изделия'] === 'Modules' ||
       props.information?.['Тип изделия'] === 'PAZ'
     "
-    >">
+  >
     <v-row
       v-if="component"
       justify="center"
@@ -232,8 +267,8 @@ const openFolder = () => {
         затем наклеить SN {{ props.product.snProduct }} на корпус с SN
         {{ component?.snComponent }}
         <br /> -->
-      </p></v-row
-    >
+      </p>
+    </v-row>
     <v-row align="center">
       <h2 class="text-center">
         Для маркировки данного типа оборудования необходимо использовать
@@ -251,7 +286,7 @@ const openFolder = () => {
   <v-container>
     <v-row>
       <v-col>
-        <v-btn :disabled="!!!component" @click="markingPassed" color="green-lighten-3" block>
+        <v-btn :disabled="!!!component" @click="marking('passed')" color="green-lighten-3" block>
           Маркировка выполнена
         </v-btn>
       </v-col>
@@ -261,91 +296,14 @@ const openFolder = () => {
         >
       </v-col>
     </v-row>
-    <v-dialog v-model="defectDialog" width="auto">
-      <v-card class="pa-10" justify="center" min-width="400">
-        <v-container>
-          <v-row justify="center">
-            <v-col>
-              <h3 class="text-center">Выберите бракованный компонент</h3>
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>
-              <v-select
-                density="compact"
-                v-model="failedComponents"
-                hide-details="auto"
-                label="Серийный номер"
-                :items="props.product.productSerialNumbers"
-                variant="solo"
-                multiple
-              ></v-select>
-            </v-col>
-          </v-row>
-          <v-row justify="center">
-            <v-col>
-              <h3 class="text-center">Укажите причину брака</h3>
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>
-              <v-textarea
-                variant="solo"
-                v-model="comment"
-                clearable
-                label="Комментарий"
-              ></v-textarea>
-            </v-col>
-          </v-row>
-          <v-row justify="center">
-            <v-col>
-              <h3 class="text-center">Подтвердите действие</h3>
-              <br />
-              <p class="text-center">Брак компонентов SN {{ failedComponents.join(', ') }}</p>
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>
-              <v-btn
-                :disabled="!!!comment || !!!failedComponents.length"
-                color="red-lighten-3"
-                @click="markingFailed"
-                block
-                >OK</v-btn
-              >
-            </v-col>
-          </v-row>
-        </v-container>
-      </v-card>
-    </v-dialog>
-    <!-- <v-dialog v-model="defectDialog" width="auto">
-      <v-card class="pa-10" justify="center" min-width="400">
-        <v-container>
-          <v-row align="center" justify="center">
-            <v-col class="pa-1"><p>Комментарий</p></v-col>
-            <v-col class="pa-1">
-              <v-textarea
-                variant="solo"
-                v-model="comment"
-                clearable
-                label="Причина брака"
-              ></v-textarea>
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col><p class="text-red text-center">Подтвердить действие</p></v-col>
-            <v-col>
-              <v-btn
-                :disabled="!!!component || !!!comment"
-                @click="markingFailed"
-                color="red-lighten-3"
-                block
-                >OK</v-btn
-              >
-            </v-col>
-          </v-row>
-        </v-container>
-      </v-card>
-    </v-dialog> -->
+
+    <DefectDialog
+      :dialog="defectDialog"
+      :product-serial-numbers="props.product.productSerialNumbers"
+      :product="props.product"
+      :information="props.information"
+      @update:dialog="defectDialog = $event"
+      @confirmDefect="failedMarking"
+    />
   </v-container>
 </template>

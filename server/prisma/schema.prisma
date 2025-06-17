@@ -1,6 +1,11 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../../extensions/src"
+  output   = "../../shared/src"
+}
+
+generator zod {
+  provider = "prisma-zod-generator"
+  output   = "../zod"
 }
 
 datasource db {
@@ -30,6 +35,7 @@ model Component {
   pnComponent         PartNumberComponent   @relation(fields: [pnComponentId], references: [partNumber])
   snProduct           Product?              @relation(fields: [snProductId], references: [snProduct])
   ProductionOperation ProductionOperation[]
+  DefectHistory       DefectHistory[]
 }
 
 model PartNumberComponent {
@@ -48,6 +54,7 @@ model ProductionOperation {
   user           String
   productSN      String?
   comment        String?    @db.Text
+  checkList      String?    @db.Text
   productId      String?
   componentId    String?
   usedComponents String?
@@ -139,4 +146,17 @@ model CheckList {
   doc_TemplateEZCAD String?
   productMP         String        @unique
   specification     Specification @relation(fields: [productMP], references: [productMP])
+}
+
+model DefectHistory {
+  id               Int      @id @default(autoincrement())
+  componentSN      String
+  actionType       String // Например: 'detected', 'approved', 'rejected', 'claim_sent', 'supplier_response'
+  status           String // Текущее состояние: 'pending', 'approved', 'closed', 'reopened', и т.д.
+  description      String?  @db.Text
+  timestamp        DateTime @default(now())
+  user             String
+  supplierResponse String?  @db.Text
+
+  component Component @relation(fields: [componentSN], references: [snComponent])
 }

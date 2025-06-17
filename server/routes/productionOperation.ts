@@ -1,12 +1,28 @@
 import type { FastifyInstance } from "fastify";
-import type { Prisma, ProductionOperation } from "../../extensions/src";
+import type { Prisma, ProductionOperation } from "../../shared/src";
 import type { StageType } from "../../frontend/src/assets/interfaces";
 import { handlePrismaError } from "../handleError";
+
 export default function productionOperationRoutes(app: FastifyInstance) {
   app.get("/production-operations", async (request, reply) => {
     try {
       const productionOperations =
         await app.prisma.productionOperation.findMany();
+      reply.send(productionOperations);
+    } catch (error) {
+      handlePrismaError(error, reply);
+      // reply.code(500).send({ error: "Internal Server Error" });
+    }
+  });
+
+  app.get("/failed-production-operations", async (request, reply) => {
+    try {
+      const productionOperations =
+        await app.prisma.productionOperation.findMany({
+          where: {
+            status: "on_hold",
+          },
+        });
       reply.send(productionOperations);
     } catch (error) {
       handlePrismaError(error, reply);
@@ -91,6 +107,7 @@ export default function productionOperationRoutes(app: FastifyInstance) {
     async (request, reply) => {
       try {
         const data = request.body;
+        console.log(data);
 
         if (
           !data.stageType ||

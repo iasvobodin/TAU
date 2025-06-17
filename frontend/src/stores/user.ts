@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
-import { os } from '@neutralinojs/lib'
 import { createUser, getUser } from '@/api/userServices'
-import type { Prisma } from '../../../extensions/src'
+import type { Prisma } from '../../../shared/src'
+import { app, os, filesystem, server, events, window as neuWindow } from '@neutralinojs/lib'
 
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -32,6 +32,11 @@ export const useUserStore = defineStore('user', {
         if (result.data) {
           this.userFullName = result.data.Name
           this.userExist = true
+          try {
+            await neuWindow.setTitle(`TAУ ${this.userName}`)
+          } catch (err) {
+            console.error('Ошибка при обновлении заголовка:', err)
+          }
         } else {
           this.userExist = false
         }

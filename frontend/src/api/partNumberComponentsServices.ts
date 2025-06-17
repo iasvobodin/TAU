@@ -1,5 +1,5 @@
 import { get, post, put, patch, del, type ApiResponse } from './apiService'
-import type { Prisma, PartNumberComponent } from '../../../extensions/src'
+import type { Prisma, PartNumberComponent } from '../../../shared/src'
 const API_URL = import.meta.env.VITE_API_URL
 
 export const fetchPNComponent = async (

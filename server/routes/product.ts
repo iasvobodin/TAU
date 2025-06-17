@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { Prisma, Product } from "../../extensions/src";
+import type { Prisma, Product } from "../../shared/src";
 
 export default function productRoutes(app: FastifyInstance) {
   app.get("/products", async (request, reply) => {
@@ -126,14 +126,14 @@ export default function productRoutes(app: FastifyInstance) {
     }
   });
 
-  app.put<{ Params: { id: number }; Body: Product }>(
-    "/products/:id",
+  app.put<{ Params: { snProduct: string }; Body: Product }>(
+    "/products/:snProduct",
     async (request, reply) => {
       try {
-        const { id } = request.params;
+        const { snProduct } = request.params;
         const data = request.body;
         const product = await app.prisma.product.update({
-          where: { id },
+          where: { snProduct },
           data,
         });
         reply.send(product);

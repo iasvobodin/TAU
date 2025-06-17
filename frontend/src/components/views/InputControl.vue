@@ -4,7 +4,7 @@ import AddArticle from './AddArticle.vue'
 import type { SerialNumberData } from '@/assets/interfaces'
 import { useUserStore } from '@/stores/user'
 import { useSerialNumberStore } from '../../stores/serialNumberStore'
-
+import { createDefectHistory } from '@/api/defectHistoryServices'
 import { createComponents } from '@/api/componentServices'
 
 const supplier = ref('')
@@ -19,7 +19,7 @@ const prepareDataToSend = (data: SerialNumberData[]) => {
       pnComponentId: e.partNumber,
       supplier: e.supplier!,
       invoice: e.invoice!,
-      status: e.status ? 'failed' : 'accepted',
+      status: e.status ? 'on_hold' : 'accepted',
       comment: e.comment ? e.comment : '{}',
       user: useUserStore().userFullName
     }
@@ -27,7 +27,8 @@ const prepareDataToSend = (data: SerialNumberData[]) => {
 }
 
 const sendComponents = async () => {
-  console.log(useSerialNumberStore().sNumbers, 'useSerialNumberStore().sNumbers')
+  console.log('!!!!!!!!!!!!!!!!!!!!!!!!')
+  // console.log(useSerialNumberStore().sNumbers, 'useSerialNumberStore().sNumbers')
   console.log(
     prepareDataToSend(useSerialNumberStore().sNumbers),
     'prepareDataToSend(useSerialNumberStore().sNumbers)'
@@ -36,8 +37,6 @@ const sendComponents = async () => {
   try {
     const result = await createComponents(prepareDataToSend(useSerialNumberStore().sNumbers))
     result.forEach((response, index) => {
-      // console.log(response, index)
-
       if (response.error) {
         useSerialNumberStore().sNumbers[index]._rejected = true
         useSerialNumberStore().sNumbers[index]._added = false
@@ -53,12 +52,37 @@ const sendComponents = async () => {
   } catch (error) {
     console.log(error)
   }
+
+  const promises = dataFromAddArticle.map(async (component) => {
+    console.log('зашли в функцию')
+    //отмеченные как брак!!!
+    if (component.status) {
+      console.log('внутри создания дх', component.name)
+
+      try {
+        const dh = await createDefectHistory({
+          componentSN: component.name,
+          actionType: 'detected',
+          status: 'on_hold',
+          user: useUserStore().userFullName,
+          // comment: component.comment,
+          // partNumber: component.partNumber,
+          description: component.comment
+        })
+        console.log('создали дефект хистори', dh.data)
+      } catch (error) {
+        console.log(error)
+      }
+    }
+  })
+  await Promise.all(promises)
 }
 
 const AddArticleEmit = (e: SerialNumberData[]) => {
   //нужно работать со стором, добавляем оставшиеся параметры, пытаемся отправить, меняем флаги
   // console.log(JSON.parse(JSON.stringify(e)))
   dataFromAddArticle.push(...JSON.parse(JSON.stringify(e)))
+  console.log(dataFromAddArticle, 'dataFromAddArticle')
   sendComponents()
 }
 const endTask = () => {
