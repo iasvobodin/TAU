@@ -24,7 +24,8 @@
     "filesystem.*",
     "events.*",
     "extensions.*",
-    "debug.log"
+    "debug.log",
+    "storage.*"
   ],
   "globalVariables": {},
   "modes": {
@@ -72,8 +73,8 @@
   "cli": {
     "binaryName": "TAU",
     "resourcesPath": "/frontend/dist/",
-    "binaryVersion": "5.6.0",
-    "clientVersion": "5.6.0",
+    "binaryVersion": "6.1.0",
+    "clientVersion": "6.1.0",
     "frontendLibrary": {
       "projectPath": "/frontend/",
       "initCommand": "npm install",

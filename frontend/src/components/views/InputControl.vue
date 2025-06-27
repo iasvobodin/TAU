@@ -62,7 +62,7 @@ const sendComponents = async () => {
       try {
         const dh = await createDefectHistory({
           componentSN: component.name,
-          actionType: 'detected',
+          actionType: 'DetectDefect',
           status: 'on_hold',
           user: useUserStore().userFullName,
           // comment: component.comment,

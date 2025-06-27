@@ -14,7 +14,6 @@
 import { ref } from 'vue'
 import bwipjs from 'bwip-js'
 import {
-  PageSize,
   Document,
   Packer,
   Paragraph,

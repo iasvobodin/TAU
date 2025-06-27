@@ -40,7 +40,9 @@ export const useErrorStore = defineStore('error', {
       this.errorMessages.shift()
     },
     addInfo(message: string) {
-      this.infoMessages.push(message)
+      if (!this.isErrorDisabled) {
+        this.infoMessages.push(message)
+      }
     },
     removeInfo() {
       this.infoMessages.shift()

@@ -12,10 +12,9 @@ const serverStats = reactive({
 })
 
 async function startLocalServer() {
-  const localServer = await os.spawnProcess(
-    'powershell ./server.exe',
-    `${window.NL_CWD}/extensions`
-  )
+  const localServer = await os.spawnProcess('powershell ./server.exe', {
+    cwd: `${window.NL_CWD}/extensions`
+  })
   console.log('Процесс запущен, ждём ответа от сервера PID: ' + localServer.pid)
 }
 async function killProcess(pid: number) {

@@ -49,13 +49,24 @@ const groupedBySN = computed(() => {
     })
   })
 
-  // Фильтрация завершённых компонентов
+  // // Фильтрация завершённых компонентов
+  // if (hideCompleted.value) {
+  //   for (const sn in groups) {
+  //     const typesInGroup = groups[sn].map((item) => item.actionType)
+  //     const allStagesPassed = orderedActionTypes.every((t) => typesInGroup.includes(t))
+  //     if (allStagesPassed) {
+  //       delete groups[sn]
+  //     }
+  //   }
+  // }
+
+  // Фильтрация компонентов
   if (hideCompleted.value) {
     for (const sn in groups) {
-      const typesInGroup = groups[sn].map((item) => item.actionType)
-      const allStagesPassed = orderedActionTypes.every((t) => typesInGroup.includes(t))
-      if (allStagesPassed) {
-        delete groups[sn]
+      // Проверяем, есть ли в группе элемент с actionType "CloseAndReport"
+      const hasClosed = groups[sn].some((item) => item.actionType === 'CloseAndReport')
+      if (hasClosed) {
+        delete groups[sn] // Исключаем компонент из списка
       }
     }
   }
@@ -105,7 +116,7 @@ async function advanceToNextStage(sn: string, next: ActionType) {
     console.log(error)
   }
   await getFailedHistory()
-  defectDialog.value = !defectDialog.value
+  defectDialog.value = false
   comment.value = ''
   // Тут ты можешь вызвать API:
   // await api.advanceDefectStage({ componentSN: sn, actionType: next })
@@ -152,9 +163,6 @@ onMounted(async () => {
             <h1>Работа с браком</h1>
           </v-col>
           <v-col>
-            <!-- <v-btn @click="showWorkflow = !showWorkflow">
-          {{ showWorkflow ? 'Скрыть этапы работы с браком' : 'Показать этапы работы с браком' }}
-        </v-btn>  -->
             <v-checkbox
               v-model="showWorkflow"
               label="Показать этапы работы с браком"
@@ -188,7 +196,8 @@ onMounted(async () => {
             <v-expansion-panel-text>
               <v-row v-for="defect in group" :key="defect.id" class="mb-2">
                 <v-col>
-                  <b>Этап: </b>{{ actionTypeToStageName[defect.actionType] || defect.actionType }} <br />
+                  <b>Этап: </b>{{ actionTypeToStageName[defect.actionType] || defect.actionType }}
+                  <br />
                   <b>Комментарий: </b>{{ defect.description || '-' }}
                   <hr />
                 </v-col>
@@ -200,7 +209,12 @@ onMounted(async () => {
               </v-row>
               <v-row>
                 <v-col cols="12">
-                  <v-btn :disabled="group.length === Object.keys(defectWorkflowMap).length" @click="changeStage(sn)" block color="gray">
+                  <v-btn
+                    :disabled="group.length === Object.keys(defectWorkflowMap).length"
+                    @click="changeStage(sn)"
+                    block
+                    color="gray"
+                  >
                     перевести на следующий этап
                   </v-btn>
                 </v-col>
@@ -229,13 +243,23 @@ onMounted(async () => {
         <v-row>
           <v-col>
             <v-btn
-            :disabled="!!!comment"
+              :disabled="!!!comment"
               v-if="nextStages[currentSN]"
               block
               :color="defectWorkflowByActionType[nextStages[currentSN]]?.color || '#000000'"
               @click="advanceToNextStage(currentSN, nextStages[currentSN])"
             >
               Перевести на этап: <b>{{ actionTypeToStageName[nextStages[currentSN]] }}</b>
+            </v-btn>
+          </v-col>
+          <v-col v-if="actionTypeToStageName[nextStages[currentSN]] === 'Фиксация'">
+            <v-btn
+              :disabled="!!!comment"
+              @click="advanceToNextStage(currentSN, 'CloseAndReport' as ActionType)"
+              color="black"
+              block
+            >
+              Брак не подтверждён
             </v-btn>
           </v-col>
         </v-row>

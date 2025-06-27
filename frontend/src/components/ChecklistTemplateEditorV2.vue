@@ -195,11 +195,12 @@ const saveTemplate = () => {
           :key="index"
           class="table-row mb-1"
           style="border: 1px solid #ccc; border-radius: 4px; padding: 8px"
+          justify-content="space-around"
         >
           <v-col cols="9">{{ field.name }}</v-col>
           <v-col cols="3">
-            <v-btn color="warning" small @click="startEditingField(index)">Edit</v-btn>
-            <v-btn color="error" small @click="deleteField(index)" class="ml-2">Delete</v-btn>
+            <v-btn color="warning" @click="startEditingField(index)">Edit</v-btn>
+            <v-btn color="error" @click="deleteField(index)" class="ml-14">Delete</v-btn>
           </v-col>
         </v-row>
       </div>

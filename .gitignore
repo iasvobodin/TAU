@@ -8,7 +8,8 @@
 /frontend/node_modules
 /extensions/*
 /frontend/dist/*
-
+/.tmp/*
+/convertFolder/*
 
 # Neutralinojs client (minified)
 neutralino.js

@@ -8,6 +8,7 @@ import { server, filesystem, os, events, window as neuWindow } from '@neutralino
 import { onMounted, shallowRef, ref, watch } from 'vue'
 import SettingsView from './SettingsView.vue'
 import AdminLog from '../AdminLog.vue'
+import OrderToProduction from './OrderToProduction.vue'
 // import { printDocxFile } from '@/assets/printer'
 
 const dialog = ref(false)
@@ -34,7 +35,8 @@ const selectComponent = (component: string) => {
 const componentsMap: Record<string, any> = {
   checklist: CheckListView,
   defects: DefectsView,
-  settings: SettingsView
+  settings: SettingsView,
+  znp: OrderToProduction
 }
 
 const templateCheckList = ref('')
@@ -385,7 +387,7 @@ const tab = ref(null)
     </v-row>
     <v-row>
       <v-col cols="12">
-        <v-btn block color="gray" @click="dialog = true"> Работа с заказом на производство </v-btn>
+        <v-btn block color="gray" @click="selectComponent('znp')"> Работа с заказом на производство </v-btn>
       </v-col>
     </v-row>
     <v-row>

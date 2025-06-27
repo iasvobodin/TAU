@@ -76,8 +76,20 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
   // Neutralino события
   function initNeutralinoEvents() {
+    events.on('PDFwindowClose', async (evt) => {
+      console.log(evt)
+      if (evt.detail === 'W_PDF_VIEWER') {
+        console.log('Окно PDF Viewer закрыто!')
+      }
+    })
+    events.on('clientDisconnect', async (event) => {
+      console.log('Neutralino client Disconnected', event)
+    })
+    events.on('windowClose', async (event) => {
+      console.log('Neutralino windowClose', event)
+    })
     events.on('clientConnect', async (event) => {
-      console.log('Neutralino client connected')
+      console.log('Neutralino client connected', event)
       connected.value && (await userStore.getUserName())
       send({
         command: 'clientConnect',

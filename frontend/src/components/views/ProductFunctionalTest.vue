@@ -13,10 +13,13 @@ import { useErrorStore } from '@/stores/errorStore'
 import { fetchComponent } from '@/api/componentServices'
 import type { Component, Prisma } from '../../../../shared/src'
 import { useUserStore } from '@/stores/user'
+import DefectDialog from '@/components/views/DefectDialog.vue'
 const props = defineProps<{
   information: ProductType['information']
   product: Tsp
 }>()
+import { createDefectHistory } from '@/api/defectHistoryServices'
+import { updateProduct } from '@/api/productServices'
 
 const emit = defineEmits<{
   (e: 'done'): void
@@ -75,64 +78,101 @@ const testPassed = async () => {
   emit('done')
 }
 
-const testFailed = async () => {
-  //в любом случае удаляем сборку
-  const { id } = props.product.productionOperations.find((e) => e.stageType === 'assembly') as {
-    id: number
-  }
-  const delAssembly = await deleteProductionOperation(id)
-  if (delAssembly.error) {
-    return
-  }
-  console.log(delAssembly.data, 'dell assembly')
+const testFailed = async (failedComponents: string[], comment: string) => {
+  await testPassed()
+  // //в любом случае удаляем сборку
+  // const { id } = props.product.productionOperations.find((e) => e.stageType === 'assembly') as {
+  //   id: number
+  // }
+  // const delAssembly = await deleteProductionOperation(id)
+  // if (delAssembly.error) {
+  //   return
+  // }
+  // console.log(delAssembly.data, 'dell assembly')
 
-  //если есть совпадения по marking
-  if (productionOperationAlarm.value && props.product.productionOperations.length > 0) {
-    console.log('HAS EXIST PRODUCTION OPERATION MARKING')
-    //удаляем операцию
-    const { id } = props.product.productionOperations.find((e) => e.stageType === 'marking') as {
-      id: number
-    }
+  // //если есть совпадения по marking
+  // if (productionOperationAlarm.value && props.product.productionOperations.length > 0) {
+  //   console.log('HAS EXIST PRODUCTION OPERATION MARKING')
+  //   //удаляем операцию
+  //   const { id } = props.product.productionOperations.find((e) => e.stageType === 'marking') as {
+  //     id: number
+  //   }
 
-    const delResult = await deleteProductionOperation(id)
-    if (delResult.error) {
-      return
-    }
-    console.log(delResult.data, 'dell marking')
-  }
+  //   const delResult = await deleteProductionOperation(id)
+  //   if (delResult.error) {
+  //     return
+  //   }
+  //   console.log(delResult.data, 'dell marking')
+  // }
 
   //теперь отвязываем и помечаем как брак все выбранные компоненты
-  const promises = failedComponents.value.map(async (fComponent) => {
-    const productionOperatioData = {
-      stageType,
-      status: 'on_hold',
-      user: useUserStore().userFullName,
-      componentId: fComponent,
-      productSN: props.product.snProduct,
-      comment: comment.value
+  const promises = failedComponents.map(async (fComponent) => {
+    // создаём дефект хистори на каждый компонент
+
+    try {
+      const dh = await createDefectHistory({
+        componentSN: fComponent,
+        actionType: 'DetectDefect',
+        status: 'on_hold',
+        user: useUserStore().userFullName,
+        description: comment
+      })
+      console.log('создали дефект хистори', dh.data)
+    } catch (error) {
+      console.log(error)
     }
 
-    //создаём бракованную операцию на все выделеннве по браку
-    const resultCreate = await createProductionOperationFailed(productionOperatioData)
-    console.log(resultCreate, 'resultCreate')
+    // меняем все статусы у бракованных компонентов на on_hold
 
-    //если оштбка с сервера не продолжаем!
-    if (resultCreate.error) {
+    try {
+      await updateComponent(fComponent, {
+        status: 'on_hold'
+        // snProductId: null
+      })
+    } catch (error) {
+      console.log(error)
       return
     }
 
-    //обновляем компонент со статусом брак, и отвязываем от продукта
-    const resultUpdate = await updateComponent(fComponent, {
-      status: 'on_hold',
-      //отвязываем бракованный компонент от продукта
-      snProductId: null
-    })
-    console.log(resultUpdate)
-    //если ошибка с сервера не продолжаем!
-    if (resultUpdate.error) {
-      return
-    }
+    // const productionOperatioData = {
+    //   stageType,
+    //   status: 'on_hold',
+    //   user: useUserStore().userFullName,
+    //   componentId: fComponent,
+    //   productSN: props.product.snProduct,
+    //   comment: comment.value
+    // }
+
+    // //создаём бракованную операцию на все выделеннве по браку
+    // const resultCreate = await createProductionOperationFailed(productionOperatioData)
+    // console.log(resultCreate, 'resultCreate')
+
+    // //если оштбка с сервера не продолжаем!
+    // if (resultCreate.error) {
+    //   return
+    // }
+
+    // //обновляем компонент со статусом брак, и отвязываем от продукта
+    // const resultUpdate = await updateComponent(fComponent, {
+    //   status: 'on_hold',
+    //   //отвязываем бракованный компонент от продукта
+    //   snProductId: null
+    // })
+    // console.log(resultUpdate)
+    // //если ошибка с сервера не продолжаем!
+    // if (resultUpdate.error) {
+    //   return
+    // }
   })
+
+  try {
+    await updateProduct(props.product.snProduct, {
+      comment: 'on_hold'
+    })
+    console.log('что-то обновили')
+  } catch (error) {
+    console.log(error)
+  }
 
   // Ожидаем завершения всех промисов
   await Promise.all(promises)
@@ -140,9 +180,19 @@ const testFailed = async () => {
   emit('done')
 }
 const checkList = ref('')
+
 const saveCheckList = (e: string) => {
   console.log(e)
   checkList.value = e
+}
+
+const hasProdductionOperation = (stageType: string) => {
+  //ищем по ключу наличие производственных операций
+  const stage = props.product.productionOperations.some((e) => e.stageType === stageType)
+  if (stage) {
+    return ' - Операция выполнена'
+  }
+  return false
 }
 </script>
 
@@ -150,7 +200,9 @@ const saveCheckList = (e: string) => {
   <v-container>
     <v-row justify="center">
       <v-col>
-        <h1 class="text-center">Функциональное тестирование</h1>
+        <h1 class="text-center">
+          Функциональное тестирование {{ hasProdductionOperation(stageType) || '' }}
+        </h1>
       </v-col>
     </v-row>
   </v-container>
@@ -176,59 +228,12 @@ const saveCheckList = (e: string) => {
       </v-col>
     </v-row>
   </v-container>
-
-  <v-dialog v-model="defectDialog" width="auto">
-    <v-card class="pa-10" justify="center" min-width="400">
-      <v-container>
-        <v-row justify="center">
-          <v-col>
-            <h3 class="text-center">Выберите бракованный компонент</h3>
-          </v-col>
-        </v-row>
-        <v-row>
-          <v-col>
-            <v-select
-              density="compact"
-              v-model="failedComponents"
-              hide-details="auto"
-              label="Серийный номер"
-              :items="props.product.productSerialNumbers"
-              variant="solo"
-              multiple
-            ></v-select>
-          </v-col>
-        </v-row>
-        <v-row justify="center">
-          <v-col>
-            <h3 class="text-center">Укажите причину брака</h3>
-          </v-col>
-        </v-row>
-        <v-row>
-          <v-col>
-            <v-textarea variant="solo" v-model="comment" clearable label="Комментарий"></v-textarea>
-          </v-col>
-        </v-row>
-        <v-row justify="center">
-          <v-col>
-            <h3 class="text-center">Подтвердите действие</h3>
-            <br />
-            <p class="text-red">{{ productionOperationAlarm }}</p>
-            <br />
-            <p class="text-center">Брак компонентов SN {{ failedComponents.join(', ') }}</p>
-          </v-col>
-        </v-row>
-        <v-row>
-          <v-col>
-            <v-btn
-              :disabled="!!!comment || !!!failedComponents.length"
-              color="red-lighten-3"
-              @click="testFailed"
-              block
-              >OK</v-btn
-            >
-          </v-col>
-        </v-row>
-      </v-container>
-    </v-card>
-  </v-dialog>
+  <DefectDialog
+    :dialog="defectDialog"
+    :product-serial-numbers="props.product.productSerialNumbers"
+    :product="props.product"
+    :information="props.information"
+    @update:dialog="defectDialog = $event"
+    @confirmDefect="testFailed"
+  />
 </template>

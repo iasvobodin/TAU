@@ -12,7 +12,7 @@
     </v-row>
     <v-row>
       <v-col cols="12">
-        <v-select
+        <v-autocomplete
           density="compact"
           v-model="selectedSP"
           hide-details="auto"
@@ -20,7 +20,7 @@
           label="Артикул"
           :items="specifications?.map((e) => `${e?.productMP} ${e?.productName}`)"
           variant="solo"
-        ></v-select>
+        ></v-autocomplete>
       </v-col>
     </v-row>
     <v-row v-if="selectedSP">

@@ -5,7 +5,10 @@ import { fetchComponent } from '@/api/componentServices'
 import type { ProductType, ProductAllPayload, Tsp, Information } from '@/assets/interfaces'
 import ProductMarking from '@/components/views/ProductMarking.vue'
 import ProductAssembly from '@/components/views/ProductAssembly.vue'
-import { fetchProductionOperationByProductSN } from '@/api/productionOperationServices'
+import {
+  deleteProductionOperation,
+  fetchProductionOperationByProductSN
+} from '@/api/productionOperationServices'
 import ProductFunctionalTest from '@/components/views/ProductFunctionalTest.vue'
 import ProductPackage from '@/components/views/ProductPackage.vue'
 import ProductInformation from '@/components/ProductInformation.vue'
@@ -160,7 +163,7 @@ const getProduct = async (cleared: boolean = true) => {
   const result = await findTauSerialNumber(productSerialNumber.value)
 
   if (result && result.data) {
-    // console.log(result.data)
+    console.log(result.data, 'product')
     // console.log(tsp.value)
     tsp.value = await transformSpecification(result.data)
 
@@ -231,6 +234,18 @@ const handleButtonClick = (step: number) => {
 const serialNumberInput = ref<InstanceType<typeof import('vuetify/components').VTextField> | null>(
   null
 )
+const deleteCurrentOperation = async (operation: string) => {
+  // находим операцию маркировки, тоже меняем он холд
+  const id = product.specification?.productionOperations.find((e) => e.stageType === operation)?.id
+
+  try {
+    id && (await deleteProductionOperation(id))
+  } catch (error) {
+    console.log(error)
+  }
+  getProduct()
+}
+
 onMounted(() => {
   serialNumberInput.value?.$el.querySelector('input')?.focus()
 })
@@ -282,6 +297,15 @@ onMounted(() => {
             {{ operationsMap[key as keyof typeof operationsMap].name
             }}{{ hasProdductionOperation(key) }}
           </v-btn>
+        </v-col>
+        <v-col v-if="counterStore.settings" cols="2">
+          <v-btn
+            small
+            color="red"
+            v-if="hasProdductionOperation(key)"
+            @click="deleteCurrentOperation(key)"
+            >Удалить</v-btn
+          >
         </v-col>
       </template>
     </v-row>

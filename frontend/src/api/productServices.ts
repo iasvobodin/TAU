@@ -27,6 +27,10 @@ export const fetchProductByOrderToProduction = async (
   return get<ProductAllPayload>(`${API_URL}/products/orderToProduction/${orderToProduction}`)
 }
 
+export const fetchAllProduct = async (): Promise<ApiResponse<ProductAllPayload[]>> => {
+  return get<ProductAllPayload[]>(`${API_URL}/products`)
+}
+
 export const updateProduct = async (
   snProduct: string,
   data: Prisma.ProductUncheckedUpdateInput

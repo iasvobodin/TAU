@@ -5,20 +5,25 @@ import DefectDialog from '@/components/views/DefectDialog.vue'
 import { updateComponent } from '@/api/componentServices'
 import bwipjs from 'bwip-js'
 import { updateProduct } from '@/api/productServices'
-import {
-  createProductionOperationPassed,
-  createProductionOperationFailed,
-  deleteProductionOperation,
-  updateProductionOperation
-} from '@/api/productionOperationServices'
+import { patchDocument, TextRun, PatchType } from 'docx'
+import { createProductionOperationPassed } from '@/api/productionOperationServices'
 import { useErrorStore } from '@/stores/errorStore'
 import { fetchComponent } from '@/api/componentServices'
 import type { Component, Prisma } from '../../../../shared/src'
 import { useUserStore } from '@/stores/user'
 import type { ModulesType, Barcodes, ProductType, StageType, Tsp } from '@/assets/interfaces'
 import { printLabel } from '@/assets/printLabel'
-import { server, filesystem, os, events, window as neuWindow } from '@neutralinojs/lib'
+import {
+  server,
+  filesystem,
+  os,
+  storage,
+  events,
+  window as neuWindow,
+  resources
+} from '@neutralinojs/lib'
 import { createDefectHistory } from '@/api/defectHistoryServices'
+import { printPassport } from '@/assets/docxProcessor'
 
 const props = defineProps<{
   information: ProductType['information']
@@ -37,6 +42,10 @@ const component: Ref<Component | null> = ref(null)
 const errorStore = useErrorStore()
 const disabledAction = ref(false) //переменная на блокировку кнопок
 const stageType: StageType = 'assembly'
+const comment = ref('')
+const assemblyPassedDialog = ref(false)
+const checkLable = ref(false)
+const checkPasport = ref(false)
 
 const findPartNumberInSpecification = (item: string) => {
   return props.product.productPartNumbers.find((e) => e === item)
@@ -108,15 +117,21 @@ const checkSerialNumber = async ($event: Event) => {
   }
 }
 
-watch(props.product.specification, () => {
-  if (props.product.specification) {
-    disabledAction.value = Object.values(props.product.specification).every(
-      (item) => item.SN !== null && item.SN !== undefined && item.SN !== ''
-    )
-  } else {
-    disabledAction.value = false
+watch(
+  props.product.specification,
+  () => {
+    if (props.product.specification) {
+      disabledAction.value = Object.values(props.product.specification).every(
+        (item) => item.SN !== null && item.SN !== undefined && item.SN !== ''
+      )
+    } else {
+      disabledAction.value = false
+    }
+  },
+  {
+    immediate: true
   }
-})
+)
 
 const assemblyPassed = async () => {
   const productionOperatioData = {
@@ -171,7 +186,7 @@ const assemblyFailed = async (failedComponents: string[], comment: string) => {
     try {
       const dh = await createDefectHistory({
         componentSN: fComponent,
-        actionType: 'detected',
+        actionType: 'DetectDefect',
         status: 'on_hold',
         user: useUserStore().userFullName,
         description: comment
@@ -348,6 +363,262 @@ const openFileKD = async () => {
   )
 }
 
+const runVbsConversion = async (docxFileName: string) => {
+  const tmpDir = `${window.NL_PATH}/.tmp`
+  const tmpVbsPath = `${tmpDir}/convert.vbs`
+  const command = `cscript //nologo "${tmpVbsPath}" "${docxFileName}"`
+
+  try {
+    // 1. Читаем VBS-файл из ресурсов
+    const vbsContent = await resources.readFile('/frontend/dist/convert.vbs')
+
+    // 2. Пишем во временную папку
+    await filesystem.writeFile(tmpVbsPath, vbsContent)
+
+    // 3. Выполняем VBS-скрипт
+    const result = await os.execCommand(command)
+
+    console.log('stdout:', result.stdOut)
+    console.log('stderr:', result.stdErr)
+    console.log('exitCode:', result.exitCode)
+
+    if (result.exitCode !== 0) {
+      console.error('Script execution failed')
+    }
+
+    // 4. (опционально) удаляем скрипт
+    // await filesystem.removeFile(tmpVbsPath)
+  } catch (error) {
+    console.error('Ошибка при запуске VBS-конвертации:', error)
+  }
+}
+
+const printPasport = async (partNumber: string) => {
+  const searchKey = 'плата 2'
+
+  const result = Object.entries(props.product.specification).find(([key]) =>
+    key.includes(searchKey)
+  )
+
+  var snValue = result?.[1]?.SN
+
+  // Обрезаем последние 3 символа, если значение есть и длина >= 3
+  if (snValue && snValue.length >= 3) {
+    snValue = snValue.slice(0, -3)
+  }
+
+  function getCurrentMonthYear(): string {
+    const now = new Date()
+    const month = String(now.getMonth() + 1).padStart(2, '0') // Месяцы от 0 до 11, добавляем 1
+    const year = now.getFullYear()
+    return `${month}.${year}`
+  }
+
+  try {
+    const dirTAU = await filesystem.readDirectory(
+      '//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Паспорта'
+    )
+
+    const filteredFile = dirTAU.find(
+      (item) => item.type === 'FILE' && item.entry.includes(partNumber)
+    )
+
+    if (!filteredFile) throw new Error('Файл с таким partNumber не найден')
+
+    const newPath = filteredFile.path
+      .replace(/^\/\//, '\\\\') // заменить // на \\
+      .replace(/\//g, '\\') // заменить все / на \
+
+    // console.log(newPath);
+
+    // os.execCommand(`explorer "${newPath}"`);
+
+    const pdfData = await filesystem.readBinaryFile(`${newPath}`)
+
+    // Определяем патчи
+    const patches = {
+      serialnumber: {
+        type: PatchType.PARAGRAPH,
+        children: [new TextRun(`${snValue}`)]
+      },
+      currentdate: {
+        type: PatchType.PARAGRAPH,
+        children: [new TextRun(getCurrentMonthYear())]
+      }
+    }
+
+    const patchedArrayBuffer = await patchDocument({
+      outputType: 'arraybuffer',
+      data: pdfData,
+      patches: patches
+    })
+    try {
+      await filesystem.writeBinaryFile(
+        window.NL_PATH + `/.tmp/${filteredFile.entry}`,
+        patchedArrayBuffer
+      )
+      console.log('пропатчилось')
+    } catch (error) {
+      console.log(error)
+    }
+
+    await runVbsConversion(filteredFile.entry)
+
+    // const fileName = filteredFile.entry; // Пример: "MP3222X1-BA1_Модуль.docx"
+    // const tmpPath = `${window.NL_PATH}/.tmp`; // Папка, где лежат и скрипт, и файл
+
+    // const scriptPath = `${tmpPath}/convert.vbs`.replace(/\//g, '\\');
+    // const inputFileName = fileName.replace(/\//g, '\\'); // Только имя, без пути
+
+    // const command = `cscript //nologo "${scriptPath}" "${inputFileName}"`;
+    // console.log("Выполняем:", command);
+
+    // os.execCommand(command)
+    //   .then((result) => {
+    //     console.log("stdout:", result.stdOut);
+    //     console.log("stderr:", result.stdErr);
+    //     console.log("exitCode:", result.exitCode);
+
+    //     if (result.exitCode !== 0) {
+    //       console.error("Script ended with error.");
+    //     }
+    //   })
+    //   .catch((err) => {
+    //     console.error("Command execution failed:", err);
+    //   });
+
+    // try {
+    //   os.execCommand(command)
+
+    // } catch (error) {
+    //   console.log(error);
+
+    // }
+    console.log('filteredFile.entry:', filteredFile.entry)
+  } catch (error) {
+    console.error(error)
+  }
+}
+
+const createFile = async () => {
+  const htmlContent = `
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Viewer</title>
+    <style>
+      body, html {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+      embed {
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <embed src="http://127.0.0.1:8080/.tmp/MP3241X1-BA1_Модуль последовательного интерфейса.pdf" type="application/pdf" />
+  </body>
+  </html>
+`
+  // Функция для конвертации строки в Uint8Array
+  function stringToUint8Array(str: string) {
+    const encoder = new TextEncoder()
+    return encoder.encode(str)
+  }
+
+  // Преобразуем HTML в Uint8Array
+  const data = stringToUint8Array(htmlContent)
+
+  // try {
+  //   await filesystem.readDirectory(window.NL_PATH + '/.tmp')
+  // } catch (error) {
+  //   await filesystem.createDirectory(window.NL_PATH + '/.tmp')
+  // }
+
+  // Запись файла в Neutralino
+  try {
+    await filesystem.writeBinaryFile(window.NL_PATH + '/.tmp/pdf-viewer.html', data)
+    console.log('Файл pdf-viewer.html успешно создан')
+  } catch (error) {
+    console.error('Ошибка при создании файла:', error)
+  }
+  try {
+    // Открываем новое окно
+    await neuWindow.create('/.tmp/pdf-viewer.html', {
+      x: 0,
+      y: 0,
+      width: 800,
+      height: 650,
+      maximizable: false,
+      exitProcessOnClose: true,
+      enableInspector: false,
+      processArgs: '--window-id=W_PDF'
+    })
+  } catch (error) {
+    console.log(error)
+  }
+}
+// Чтение серийного номера с обрезкой последних 3 символов
+const getSerialNumber = (specification: Tsp['specification']): string => {
+  const result = Object.entries(specification).find(([key]) => key.includes('плата 2'))
+  const snValue = result?.[1]?.SN
+  return snValue && snValue.endsWith('-02') ? snValue.slice(0, -3) : snValue || ''
+}
+
+// const openPrintPassportWindow = async (partNumber: string, serialNumber: string) => {
+//   const isDev = import.meta.env.MODE === 'development'
+//   const baseUrl = isDev ? 'http://localhost:5173' : '/index.html'
+
+//   const part = encodeURIComponent(partNumber)
+//   const serial = encodeURIComponent(serialNumber)
+//   const hashPath = `#/print-pdf?partNumber=${part}&serialNumber=${serial}`
+
+//   const fullUrl = `${baseUrl}/${encodeURI(hashPath)}`
+
+//   await neuWindow.create("http://localhost:5173/#/print-pdf?partNumber=42&serialNumber=ABC", {
+//      x: 0,
+//       y: 0,
+//     width: 700,
+//     height: 950,
+//     enableInspector: true,
+//     exitProcessOnClose: true,
+//   })
+// }
+
+const openPrintPassportWindow = async (partNumber: string): Promise<void> => {
+  const serialNumber = getSerialNumber(props.product.specification)
+  const isDev = import.meta.env.MODE === 'development'
+  const baseUrl = isDev ? 'http://localhost:5173/print-pdf' : '/print-pdf'
+
+  try {
+    await storage.setData('partNumber', partNumber)
+    await storage.setData('serialNumber', serialNumber)
+  } catch (error) {
+    console.log(error)
+  }
+
+  try {
+    await neuWindow.create(baseUrl, {
+      x: 0,
+      y: 0,
+      width: 700,
+      height: 950,
+      maximizable: false,
+      exitProcessOnClose: true,
+      enableInspector: false,
+      processArgs: '--window-id=W_PDF'
+    })
+  } catch (error) {
+    console.log(error)
+  }
+}
+
 onMounted(() => {
   serialNumberInput.value?.$el.querySelector('input')?.focus()
 })
@@ -357,7 +628,7 @@ onMounted(() => {
   <v-container>
     <v-row justify="center">
       <v-col>
-        <h1 class="text-center">Сборка {{ hasProdductionOperation(stageType) }}</h1>
+        <h1 class="text-center">Сборка {{ hasProdductionOperation(stageType) || '' }}</h1>
       </v-col>
     </v-row>
   </v-container>
@@ -449,14 +720,36 @@ onMounted(() => {
     </v-row>
     <v-row>
       <v-col>
-        <v-btn @click="printLabel(props)" color="grey-lighten-3" block>
+        <!-- @click="printPassport(props.information?.['Артикул изделия']!, getSerialNumber(props.product.specification) )" -->
+        <v-btn
+          openPrintPassportWindow
+          @click="openPrintPassportWindow(props.information?.['Артикул изделия']!)"
+          color="grey-lighten-3"
+          block
+        >
           Печать отгрузочного паспорта
         </v-btn>
       </v-col>
     </v-row>
+    <!-- <v-row>
+      <v-col>
+        <v-btn
+          @click="createFile"
+          color="grey-lighten-3"
+          block
+        >
+          херня
+        </v-btn>
+      </v-col>
+    </v-row> -->
     <v-row>
       <v-col>
-        <v-btn @click="assemblyPassed" :disabled="!disabledAction" color="green-lighten-3" block>
+        <v-btn
+          @click="assemblyPassedDialog = !assemblyPassedDialog"
+          :disabled="!disabledAction"
+          color="green-lighten-3"
+          block
+        >
           Сборка выполнена
         </v-btn>
       </v-col>
@@ -467,7 +760,45 @@ onMounted(() => {
       </v-col>
     </v-row>
   </v-container>
-
+  <v-dialog v-model="assemblyPassedDialog" width="auto">
+    <v-card class="pa-5" justify="center" min-width="400">
+      <v-container>
+        <v-row justify="center">
+          <v-col>
+            <h3 class="text-center">Подтвердите завершение сборки</h3>
+          </v-col>
+        </v-row>
+        <v-row class="pa-0">
+          <v-checkbox
+            v-model="checkLable"
+            label="Этикетка с серийным номером распечатана"
+            hide-details
+            class="mb-4"
+          />
+        </v-row>
+        <v-row>
+          <v-checkbox
+            v-model="checkPasport"
+            label="Отгрузочный паспорт распечатан"
+            hide-details
+            class="mb-4"
+          />
+        </v-row>
+        <v-row>
+          <v-col>
+            <v-btn
+              color="green-lighten-3"
+              :disabled="!checkPasport || !checkLable"
+              block
+              @click="assemblyPassed"
+            >
+              Сборка завершена
+            </v-btn>
+          </v-col>
+        </v-row>
+      </v-container>
+    </v-card>
+  </v-dialog>
   <DefectDialog
     :dialog="defectDialog"
     :product-serial-numbers="props.product.productSerialNumbers"

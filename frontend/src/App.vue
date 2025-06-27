@@ -65,20 +65,15 @@ const killSpawnProcess = async (pid: number) => {
 
 const mountServer = async () => {
   try {
-    const dirTAU = await filesystem.readDirectory(
-      '//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ'
-      // {recursive: true}
-    )
-    console.log(dirTAU)
-    const dirTMP = await filesystem.readDirectory(window.NL_PATH + '/.tmp')
-    console.log(dirTMP)
+    await filesystem.createDirectory('./.tmp')
   } catch (error) {
-    const createDir = await filesystem.createDirectory(window.NL_PATH + '/.tmp')
-    console.log(createDir)
+    console.log(error)
   }
+
   try {
     await server.mount('/.tmp', './.tmp')
     console.log('server is mounted on /.tmp')
+
     const mounts = await server.getMounts()
     console.log('Mounts:', mounts)
     if (Array.isArray(mounts) && mounts.length === 0) {
