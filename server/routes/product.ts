@@ -145,9 +145,9 @@ export default function productRoutes(app: FastifyInstance) {
 
   app.delete("/products/:id", async (request, reply) => {
     try {
-      const { id } = request.params as { id: number };
+      const { id } = request.params as { id: string };
       await app.prisma.product.delete({
-        where: { id },
+        where: { id: parseInt(id) },
       });
       reply.code(204).send();
     } catch (error) {

@@ -1,5 +1,6 @@
 import { get, post, put, patch, del, type ApiResponse } from './apiService'
 import type { Prisma, User, Product } from '../../../shared/src'
+import type { ClientsResponse } from '@/assets/interfaces'
 // export interface User {
 //   id: number
 //   Login: string
@@ -13,6 +14,10 @@ export const getUser = async (Login: string): Promise<ApiResponse<User>> => {
 
 export const getUsers = async (): Promise<ApiResponse<User[]>> => {
   return get<User[]>(`${API_URL}/users`)
+}
+
+export const getClients = async (): Promise<ApiResponse<ClientsResponse>> => {
+  return get<ClientsResponse>(`${API_URL}/clients`)
 }
 
 export const createUser = async (

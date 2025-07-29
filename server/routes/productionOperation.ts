@@ -129,6 +129,7 @@ export default function productionOperationRoutes(app: FastifyInstance) {
               user: data.user,
               comment: data.comment,
               usedComponents: data.usedComponents,
+              date: data.date ? new Date(data.date) : undefined, // ✅ добавлено
             },
           }
         );

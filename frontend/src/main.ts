@@ -9,6 +9,7 @@ import * as components from 'vuetify/components'
 import * as directives from 'vuetify/directives'
 import { init, events, app } from '@neutralinojs/lib'
 import { useWebSocketStore } from './stores/websockets'
+import { useUserStore } from './stores/user'
 
 const vuetify = createVuetify({
   defaults: {
@@ -23,10 +24,17 @@ const vuetify = createVuetify({
 
 createApp(App).use(router).use(createPinia()).use(vuetify).mount('#app')
 
+const wsStore = useWebSocketStore()
+const userStore = useUserStore()
+wsStore.connect()
+
 init()
 events.on('windowClose', () => {
+  // wsStore.send({
+  //   command: 'appClientDisconnect',
+  //   timestamp: new Date().toISOString(),
+  //   user: userStore.userName,
+  //   fullName: userStore.userFullName || null
+  // })
   app.exit()
 })
-
-const wsStore = useWebSocketStore()
-wsStore.connect()

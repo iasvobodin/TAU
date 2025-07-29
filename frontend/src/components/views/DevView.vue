@@ -8,8 +8,44 @@ import { server, filesystem, os, events, window as neuWindow } from '@neutralino
 import { onMounted, shallowRef, ref, watch } from 'vue'
 import SettingsView from './SettingsView.vue'
 import AdminLog from '../AdminLog.vue'
+import ClientsApp from '../ClientsApp.vue'
 import OrderToProduction from './OrderToProduction.vue'
+import { getClients } from '@/api/userServices'
+
 // import { printDocxFile } from '@/assets/printer'
+
+// Интерфейс для клиента
+interface Client {
+  clientId: string
+  lastActive: string // ISO-строка даты
+}
+
+// Интерфейс для структуры ответа API
+interface ClientsResponse {
+  count: number
+  clients: Client[]
+}
+
+const clientsData = ref<ClientsResponse | null>(null)
+
+// Заголовки таблицы
+const headers = [
+  { title: 'ID Клиента', key: 'clientId' },
+  { title: 'Последняя активность', key: 'lastActive' }
+]
+
+// Форматирование даты
+const formatDate = (dateString: string) => {
+  const date = new Date(dateString)
+  return date.toLocaleString('ru-RU', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  })
+}
 
 const dialog = ref(false)
 const closeDialogAndCheck = () => {
@@ -95,6 +131,11 @@ watch(
 )
 
 onMounted(async () => {
+  const result = await getClients()
+  if (result.data) {
+    clientsData.value = result.data
+  }
+
   // await getSpecification()
 })
 
@@ -372,6 +413,7 @@ const tab = ref(null)
 
 <template>
   <h1>DEV</h1>
+
   <v-container>
     <v-row>
       <v-col cols="12">
@@ -387,7 +429,9 @@ const tab = ref(null)
     </v-row>
     <v-row>
       <v-col cols="12">
-        <v-btn block color="gray" @click="selectComponent('znp')"> Работа с заказом на производство </v-btn>
+        <v-btn block color="gray" @click="selectComponent('znp')">
+          Работа с заказом на производство
+        </v-btn>
       </v-col>
     </v-row>
     <v-row>
@@ -411,7 +455,7 @@ const tab = ref(null)
       <template v-slot:actions> </template>
     </v-card>
   </v-dialog>
-
+  <ClientsApp />
   <AdminLog />
 
   <!-- <button @click="readFile">readFile</button>
@@ -423,5 +467,5 @@ const tab = ref(null)
   {{ files }} -->
   <!-- <v-btn color="success" @click="getSpecification" >getSpecification</v-btn> -->
 
-  <button @click="print">printDocxFile</button>
+  <!-- <button @click="print">printDocxFile</button> -->
 </template>

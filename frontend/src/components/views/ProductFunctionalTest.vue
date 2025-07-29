@@ -20,7 +20,9 @@ const props = defineProps<{
 }>()
 import { createDefectHistory } from '@/api/defectHistoryServices'
 import { updateProduct } from '@/api/productServices'
+import { openFileFromNet } from '@/assets/utils/openFileFromNet'
 
+const OK_PATH = import.meta.env.VITE_OK_PATH as string
 const emit = defineEmits<{
   (e: 'done'): void
 }>()
@@ -64,7 +66,7 @@ const testPassed = async () => {
     user: useUserStore().userFullName,
     productId: props.product.snProduct,
     usedComponents: props.product.productSerialNumbers.join(', '),
-    comment: checkList.value
+    checkList: checkList.value
   }
 
   const resultCreate = await createProductionOperationPassed(productionOperatioData)
@@ -80,32 +82,8 @@ const testPassed = async () => {
 
 const testFailed = async (failedComponents: string[], comment: string) => {
   await testPassed()
-  // //в любом случае удаляем сборку
-  // const { id } = props.product.productionOperations.find((e) => e.stageType === 'assembly') as {
-  //   id: number
-  // }
-  // const delAssembly = await deleteProductionOperation(id)
-  // if (delAssembly.error) {
-  //   return
-  // }
-  // console.log(delAssembly.data, 'dell assembly')
 
-  // //если есть совпадения по marking
-  // if (productionOperationAlarm.value && props.product.productionOperations.length > 0) {
-  //   console.log('HAS EXIST PRODUCTION OPERATION MARKING')
-  //   //удаляем операцию
-  //   const { id } = props.product.productionOperations.find((e) => e.stageType === 'marking') as {
-  //     id: number
-  //   }
-
-  //   const delResult = await deleteProductionOperation(id)
-  //   if (delResult.error) {
-  //     return
-  //   }
-  //   console.log(delResult.data, 'dell marking')
-  // }
-
-  //теперь отвязываем и помечаем как брак все выбранные компоненты
+  //теперь помечаем как брак все выбранные компоненты
   const promises = failedComponents.map(async (fComponent) => {
     // создаём дефект хистори на каждый компонент
 
@@ -133,36 +111,6 @@ const testFailed = async (failedComponents: string[], comment: string) => {
       console.log(error)
       return
     }
-
-    // const productionOperatioData = {
-    //   stageType,
-    //   status: 'on_hold',
-    //   user: useUserStore().userFullName,
-    //   componentId: fComponent,
-    //   productSN: props.product.snProduct,
-    //   comment: comment.value
-    // }
-
-    // //создаём бракованную операцию на все выделеннве по браку
-    // const resultCreate = await createProductionOperationFailed(productionOperatioData)
-    // console.log(resultCreate, 'resultCreate')
-
-    // //если оштбка с сервера не продолжаем!
-    // if (resultCreate.error) {
-    //   return
-    // }
-
-    // //обновляем компонент со статусом брак, и отвязываем от продукта
-    // const resultUpdate = await updateComponent(fComponent, {
-    //   status: 'on_hold',
-    //   //отвязываем бракованный компонент от продукта
-    //   snProductId: null
-    // })
-    // console.log(resultUpdate)
-    // //если ошибка с сервера не продолжаем!
-    // if (resultUpdate.error) {
-    //   return
-    // }
   })
 
   try {
@@ -204,11 +152,24 @@ const hasProdductionOperation = (stageType: string) => {
           Функциональное тестирование {{ hasProdductionOperation(stageType) || '' }}
         </h1>
       </v-col>
+      <v-col cols="2" class="text-right">
+        <v-tooltip text="Открыть операционную карту" location="bottom">
+          <template v-slot:activator="{ props: activatorProps }">
+            <v-btn
+              @click="openFileFromNet(product.checkList?.doc_TestOK, OK_PATH, '/OK')"
+              color="gray"
+              v-bind="activatorProps"
+            >
+              <v-icon color="blue" left>mdi-information</v-icon>
+            </v-btn>
+          </template>
+        </v-tooltip>
+      </v-col>
     </v-row>
   </v-container>
 
   <ProductInformation :information="props.product.information" />
-  <v-container>
+  <v-container class="pa-0 mt-5">
     <v-row>
       <v-col>
         <ChecklistViewer
@@ -219,12 +180,23 @@ const hasProdductionOperation = (stageType: string) => {
     </v-row>
     <v-row>
       <v-col>
-        <v-btn :disabled="!checkList" @click="testPassed" color="green-lighten-3" block>
+        <v-btn
+          :disabled="!checkList || !!hasProdductionOperation(stageType)"
+          @click="testPassed"
+          color="green-lighten-3"
+          block
+        >
           Тестирование выполнено
         </v-btn>
       </v-col>
       <v-col>
-        <v-btn @click="defectDialog = true" color="red-lighten-3" block>Брак</v-btn>
+        <v-btn
+          :disabled="!!hasProdductionOperation(stageType)"
+          @click="defectDialog = true"
+          color="red-lighten-3"
+          block
+          >Брак</v-btn
+        >
       </v-col>
     </v-row>
   </v-container>

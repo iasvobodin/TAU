@@ -1,6 +1,6 @@
 import { createProductionOperationPassed } from '@/api/productionOperationServices'
-// Импортируй свои типы:
 import type { ProductAllPayload } from './interfaces'
+import { deleteProduct } from '@/api/productServices'
 
 const REQUIRED_STAGES = ['marking', 'assembly', 'functionalTest', 'package'] as const
 const ALLOWED_TYPES = ['Controller', 'PowerSupply', 'Modules', 'PAZ', 'TerminalBlocks'] as const
@@ -22,7 +22,7 @@ type EnrichedProduct = ProductWithMissingStages & {
 }
 
 /**
- * Фильтруем продукты с отсутствующими производственными операциями
+ * Найти продукты, у которых отсутствуют операции
  */
 function findProductsWithMissingOperations(
   products: ProductAllPayload[]
@@ -49,7 +49,7 @@ function findProductsWithMissingOperations(
 }
 
 /**
- * Создание недостающих операций (в параллель через Promise.all)
+ * Создание недостающих операций
  */
 async function createMissingOperations(products: EnrichedProduct[]) {
   const allPromises: Promise<void>[] = []
@@ -58,13 +58,14 @@ async function createMissingOperations(products: EnrichedProduct[]) {
     const sortedOps = [...product.productionOperations].sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     )
+
     const lastOp = sortedOps[0]
     const user = lastOp?.user ?? 'Системный пользователь'
     const date = lastOp?.date ?? new Date().toISOString()
-    const usedComponents = product.components?.map((c) => c.snComponent).join(', ') ?? ''
+    const usedComponents = lastOp?.usedComponents ?? ''
 
     for (const stageType of product.missingStages) {
-      const productionOperationData = {
+      const payload = {
         stageType,
         status: 'passed',
         user,
@@ -73,13 +74,28 @@ async function createMissingOperations(products: EnrichedProduct[]) {
         usedComponents
       }
 
-      const promise = createProductionOperationPassed(productionOperationData)
+      // Проверка обязательных полей
+      if (
+        !payload.stageType ||
+        !payload.productId ||
+        !payload.status ||
+        !payload.user ||
+        !payload.usedComponents ||
+        !payload.date
+      ) {
+        console.error(
+          `❌ Пропущено создание: недостаточно данных для ${product.snProduct} (${stageType})`,
+          payload
+        )
+        continue
+      }
+
+      const promise = createProductionOperationPassed(payload)
         .then(() => {
-          console.log(`✅ Операция "${stageType}" создана для продукта ${product.snProduct}`)
+          console.log(`✅ Создана операция "${stageType}" для ${product.snProduct} (дата: ${date})`)
         })
         .catch((error) => {
           console.error(`❌ Ошибка при создании "${stageType}" для ${product.snProduct}:`, error)
-          // Не выбрасываем, чтобы остальные продолжились
         })
 
       allPromises.push(promise)
@@ -90,19 +106,73 @@ async function createMissingOperations(products: EnrichedProduct[]) {
 }
 
 /**
- * Основная функция: фильтруем → обогащаем → создаём операции
+ * Основная функция
  */
-export async function processMissingOperations(products: ProductAllPayload[]) {
-  const filtered = findProductsWithMissingOperations(products)
+export async function processMissingOperations(products: ProductAllPayload[], dryRun = false) {
+  const emptyProducts: ProductAllPayload[] = products.filter(
+    (p) => !p.productionOperations?.length && !p.components?.length
+  )
+
+  const validProducts = products.filter((p) => !emptyProducts.includes(p))
+
+  if (emptyProducts.length > 0) {
+    console.log('\n⚠️ Найдены пустые продукты (будут пропущены):')
+    for (const p of emptyProducts) {
+      console.log(`- ID: ${p.id}, SN: ${p.snProduct}`)
+      try {
+        deleteProduct(p.id)
+      } catch (error) {
+        console.log(error)
+      }
+    }
+  }
+
+  const filtered = findProductsWithMissingOperations(validProducts)
+
+  if (filtered.length === 0) {
+    console.log('✅ Все оставшиеся продукты содержат необходимые операции.')
+    return
+  }
+
+  // Отчёт по неполным
+  console.log(`\n📝 Найдено ${filtered.length} продукт(ов) с отсутствующими этапами:`)
+  for (const p of filtered) {
+    console.log(`- ${p.snProduct} (${p.type}): нет [${p.missingStages.join(', ')}]`)
+  }
 
   const enriched: EnrichedProduct[] = filtered.map((p) => {
-    const full = products.find((prod) => prod.id === p.id)
+    const full = validProducts.find((prod) => prod.id === p.id)!
     return {
       ...p,
-      components: full?.components ?? [],
-      productionOperations: full?.productionOperations ?? []
+      components: full.components ?? [],
+      productionOperations: full.productionOperations ?? []
     }
   })
+
+  if (dryRun) {
+    console.log('\n🚫 Режим dry-run включён. Никакие операции не будут созданы.')
+    for (const product of enriched) {
+      const lastOp = [...product.productionOperations].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      )[0]
+
+      const user = lastOp?.user ?? 'Системный пользователь'
+      const date = lastOp?.date ?? new Date().toISOString()
+      const usedComponents = lastOp?.usedComponents ?? ''
+
+      for (const stageType of product.missingStages) {
+        console.log(`📦 Будет создана операция:
+  Продукт: ${product.snProduct}
+  Этап: ${stageType}
+  Пользователь: ${user}
+  Дата: ${date}
+  Комплектующие: ${usedComponents}
+        `)
+      }
+    }
+
+    return
+  }
 
   await createMissingOperations(enriched)
 }

@@ -3,7 +3,7 @@ import { reactive, ref, onMounted, type Ref } from 'vue'
 
 import { genSN } from '@/assets/generateSN'
 import { createDocWithBarcodes } from '@/assets/barcodeGenerator'
-
+import { openFileFromNet } from '@/assets/utils/openFileFromNet'
 import { fetchComponent } from '@/api/componentServices'
 import { useErrorStore } from '@/stores/errorStore'
 import type { ModulesType, ProductAllPayload } from '@/assets/interfaces'
@@ -16,9 +16,11 @@ import {
   fetchProductByOrderToProduction
 } from '@/api/productServices'
 import { server, filesystem, os, events, window as neuWindow } from '@neutralinojs/lib'
+// import type { Sp } from '@/assets/interfaces'
 
 const specification_qty = ref('')
 const allMatch = ref(false)
+const OK_PATH = import.meta.env.VITE_OK_PATH as string
 
 type Barcodes = {
   barcode: string // znp.data.snProduct
@@ -36,6 +38,7 @@ interface Sp {
   serialNumbers: string[] | null
   orderToProduction: string | null
 }
+
 const errorStore = useErrorStore()
 const specification: Sp = reactive({
   sp: null,
@@ -95,12 +98,12 @@ const printLabel = async () => {
         // Дальнейшие действия, если все продукты соответствуют артикулу
         console.log('все продукты соответствуют артикулу, ЗНП и количеству')
 
-        existBarcodes.value = znp.data.map((item) => ({
-          barcode: item.snProduct,
-          productName: item.specification.productName,
-          partNumber: item.specification.productMP,
-          type: item.specification.type
-        }))
+        // existBarcodes.value = znp.data.map((item) => ({
+        //   barcode: item.snProduct,
+        //   productName: item.specification.productName,
+        //   partNumber: item.specification.productMP,
+        //   type: item.specification.type
+        // }))
       }
     } else {
       errorStore.addError('В данном З.Н.П. количество модулей не совпадает!')
@@ -339,7 +342,28 @@ onMounted(() => {
 </script>
 
 <template>
-  <h1>Подготовка производства</h1>
+  <v-container>
+    <v-row>
+      <v-col>
+        <h1>Подготовка производства</h1>
+      </v-col>
+
+      <v-col cols="2" class="text-right">
+        <v-tooltip text="Открыть операционную карту" location="bottom">
+          <template v-slot:activator="{ props: activatorProps }">
+            <v-btn
+              @click="openFileFromNet('Подготовка производства', OK_PATH, '/OK')"
+              color="gray"
+              v-bind="activatorProps"
+            >
+              <v-icon color="blue" left>mdi-information</v-icon>
+            </v-btn>
+          </template>
+        </v-tooltip>
+      </v-col>
+    </v-row>
+  </v-container>
+
   <v-divider class="border-opacity-50" color="info"></v-divider>
   <v-container>
     <v-row align="center" justify="center">
@@ -353,9 +377,9 @@ onMounted(() => {
           clearable
           @click:clear="clearState"
           @keyup.enter="prepareSpecification"
-          label="должен содержать артикул_количество_ЗНП"
+          label="Должен содержать ЗНП_артикул_количество"
           variant="solo"
-          :rules="[(value) => pattern.test(value) || 'Должен содержать артикул_количество_ЗНП']"
+          :rules="[(value) => pattern.test(value) || 'Должен содержать ЗНП_артикул_количество']"
         ></v-text-field>
       </v-col>
     </v-row>
@@ -365,7 +389,7 @@ onMounted(() => {
       <v-col class="text-center">
         <h3 class="text-h5">Детали заказа на производство {{ specification.orderToProduction }}</h3>
       </v-col>
-      <v-col class="text-right">
+      <!-- <v-col class="text-right">
         <v-tooltip text="Открыть руководство пользователя принтером" location="bottom">
           <template v-slot:activator="{ props: activatorProps }">
             <v-btn @click="openFile" color="gray" v-bind="activatorProps">
@@ -373,7 +397,7 @@ onMounted(() => {
             </v-btn>
           </template>
         </v-tooltip>
-      </v-col>
+      </v-col> -->
     </v-row>
     <v-row align="center">
       <v-col> Артикул изделия </v-col>
@@ -433,5 +457,5 @@ onMounted(() => {
     </v-row>
   </v-container>
 
-  <!-- MP3241X1-EA1_3_1.1.2 -->
+  <!-- 1.1.2_MP3241X1-EA1_3 -->
 </template>

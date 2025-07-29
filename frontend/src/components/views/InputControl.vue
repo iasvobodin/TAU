@@ -6,7 +6,9 @@ import { useUserStore } from '@/stores/user'
 import { useSerialNumberStore } from '../../stores/serialNumberStore'
 import { createDefectHistory } from '@/api/defectHistoryServices'
 import { createComponents } from '@/api/componentServices'
+import { openFileFromNet } from '@/assets/utils/openFileFromNet'
 
+const OK_PATH = import.meta.env.VITE_OK_PATH as string
 const supplier = ref('')
 const invoice = ref('')
 const dataFromAddArticle: SerialNumberData[] = []
@@ -27,13 +29,6 @@ const prepareDataToSend = (data: SerialNumberData[]) => {
 }
 
 const sendComponents = async () => {
-  console.log('!!!!!!!!!!!!!!!!!!!!!!!!')
-  // console.log(useSerialNumberStore().sNumbers, 'useSerialNumberStore().sNumbers')
-  console.log(
-    prepareDataToSend(useSerialNumberStore().sNumbers),
-    'prepareDataToSend(useSerialNumberStore().sNumbers)'
-  )
-
   try {
     const result = await createComponents(prepareDataToSend(useSerialNumberStore().sNumbers))
     result.forEach((response, index) => {
@@ -93,7 +88,27 @@ const endTask = () => {
 </script>
 
 <template>
-  <h1>Входной контроль</h1>
+  <v-container>
+    <v-row>
+      <v-col>
+        <h1>Входной контроль</h1>
+      </v-col>
+
+      <v-col cols="2" class="text-right">
+        <v-tooltip text="Открыть операционную карту" location="bottom">
+          <template v-slot:activator="{ props: activatorProps }">
+            <v-btn
+              @click="openFileFromNet('Входной контроль', OK_PATH, '/OK')"
+              color="gray"
+              v-bind="activatorProps"
+            >
+              <v-icon color="blue" left>mdi-information</v-icon>
+            </v-btn>
+          </template>
+        </v-tooltip>
+      </v-col>
+    </v-row>
+  </v-container>
   <v-divider class="border-opacity-50" color="info"></v-divider>
 
   <v-container>

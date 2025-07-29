@@ -234,22 +234,13 @@ const openFile = async () => {
           maxlength="13"
         ></v-text-field>
       </v-col>
-      <v-col cols="2" class="text-right">
-        <v-tooltip text="Открыть операционную карту" location="bottom">
-          <template v-slot:activator="{ props: activatorProps }">
-            <v-btn @click="openFile" color="gray" v-bind="activatorProps">
-              <v-icon color="blue" left>mdi-information</v-icon>
-            </v-btn>
-          </template>
-        </v-tooltip>
-      </v-col>
     </v-row>
     <!-- :rules="[(value) => pattern.test(value) || 'Только цифры']" -->
   </v-container>
   <teleport to="body"> </teleport>
   <v-data-table-virtual
     :sort-by="[{ key: 'name', order: 'asc' }]"
-    height="40vh"
+    height="35vh"
     :headers="headers"
     density="compact"
     :items="serialNumberStore.sNumbers"
@@ -295,7 +286,7 @@ const openFile = async () => {
         <v-btn :disabled="isAddButtonDisabled" color="green-lighten-3" @click="emitData" block
           >Добавить</v-btn
         >
-        <v-btn color="yellow-lighten-3" @click="tryToPrint">Баркоды</v-btn>
+        <!-- <v-btn color="yellow-lighten-3" @click="tryToPrint">Баркоды</v-btn> -->
       </v-col>
 
       <!-- <v-col cols="12" md="6" sm="6">

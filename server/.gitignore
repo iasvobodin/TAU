@@ -114,7 +114,7 @@ web_modules/
 
 .next
 out
-
+prisma/dev.db
 # Nuxt.js build / generate output
 
 .nuxt

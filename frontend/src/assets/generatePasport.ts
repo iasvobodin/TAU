@@ -13,6 +13,7 @@ import {
 import { filesystem, os } from '@neutralinojs/lib'
 import type { TransformSpecification } from './transformSP'
 import imgUrl from './1.png'
+import type { CheckList } from './interfaces'
 type OperationMap = Record<string, string>
 
 const OPERATION_MAP: OperationMap = {
@@ -23,15 +24,15 @@ const OPERATION_MAP: OperationMap = {
 }
 
 // Функция для форматирования даты в нужном формате
-function getCurrentFormattedDate(): string {
-  const date = new Date()
+function getCurrentFormattedDate(date: Date): string {
+  // const date = new Date()
   const day = String(date.getDate()).padStart(2, '0')
   const month = String(date.getMonth() + 1).padStart(2, '0') // Месяцы начинаются с 0
   const year = date.getFullYear()
   return `${day}.${month}.${year}`
 }
 
-const CURRENT_DATE = getCurrentFormattedDate()
+const CURRENT_DATE = getCurrentFormattedDate(new Date())
 
 function createTableCell(
   content: string | TextRun,
@@ -68,13 +69,15 @@ function createHeaderRow(headers: string[]): TableRow {
 // Функция для создания строки данных таблицы
 function createDataRow(data: string[], columnWidths: number[]): TableRow {
   return new TableRow({
-    children: data.map((cell, index) => createTableCell(cell, { widthPct: columnWidths[index] }))
+    children: data.map((cell, index) =>
+      createTableCell(cell, { widthPct: columnWidths[index], alignment: 'center' })
+    )
   })
 }
 
 // Функция для создания таблицы компонентов
 function createComponentTable(headers: string[], data: Record<string, any>): Table {
-  const columnWidths = [20, 65, 15] // Соотношение ширины колонок в процентах
+  const columnWidths = [20, 60, 20] // Соотношение ширины колонок в процентах
   const tableRows = [
     createHeaderRow(headers),
     ...Object.keys(data).map((key) =>
@@ -95,7 +98,55 @@ function createOperationsTable(headers: string[], rows: string[][]): Table {
 
   return new Table({ rows: tableRows, width: { size: 100, type: 'pct' } })
 }
+function parseCheckList(checkList: CheckList['values'] | null): string[][] {
+  if (checkList === null) {
+    return []
+  } else {
+    return Object.entries(checkList).map(([title, { status, comment }]) => [
+      title,
+      status === 'pass' ? '✔️' : status,
+      comment || '-'
+    ])
+  }
+}
 
+// Функция для создания таблицы чеклиста
+function createCheckListTable(headers: string[], rows: string[][]): Table {
+  const columnWidths = [55, 15, 30] // ширина колонок в процентах
+  const tableRows = [
+    createHeaderRow(headers),
+    ...rows.map((row) => createDataRow(row, columnWidths))
+  ]
+
+  return new Table({ rows: tableRows, width: { size: 100, type: 'pct' } })
+}
+
+// type CheckList = {
+//   title: string
+//   values: Record<string, { status: string; comment: string }>
+// }
+
+const findCheckListInOperation = (operations: TransformSpecification['productionOperations']) => {
+  const findValue = operations
+    .map((operation) => {
+      if (operation.stageType === 'functionalTest' && operation.checkList) {
+        try {
+          const parsed: CheckList = JSON.parse(operation.checkList)
+          if (parsed && parsed.values) {
+            return parsed.values
+          }
+        } catch (err) {
+          console.error('Ошибка при парсинге checkList:', err)
+        }
+      }
+    })
+    .filter((values): values is CheckList['values'] => !!values)[0]
+  if (findValue) {
+    return findValue
+  } else {
+    return null
+  }
+}
 // Основная функция для генерации паспорта
 export const generatePasport = async (
   productName: string,
@@ -106,15 +157,22 @@ export const generatePasport = async (
 ): Promise<void> => {
   try {
     const headers = ['Артикул', 'Наименование', 'SN']
-    const operationHeaders = ['Операция', 'Сборщик', 'Дата и время завершения операции']
+    const operationHeaders = ['Операция', 'Сборщик', 'Дата завершения операции']
+    const checkListHeaders = ['Пункт проверки', 'Статус', 'Комментарий']
 
-    const operationRows = productionOperationsData.map((operation) => [
-      OPERATION_MAP[operation.stageType as keyof OperationMap],
-      operation.user,
-      new Date(operation.date).toLocaleString()
-    ])
+    const firstCheckListValues = findCheckListInOperation(productionOperationsData)
 
-    // const imageData = await filesystem.readBinaryFile('./frontend/public/1.png')
+    const operationRows = productionOperationsData.map((operation) => {
+      return [
+        OPERATION_MAP[operation.stageType as keyof OperationMap],
+        operation.user,
+        getCurrentFormattedDate(new Date(operation.date))
+      ]
+    })
+
+    const checkListRows = parseCheckList(firstCheckListValues)
+    console.log(checkListRows, 'checkListRows')
+
     const imageTest = await (await fetch(imgUrl)).arrayBuffer()
 
     const doc = new Document({
@@ -151,11 +209,16 @@ export const generatePasport = async (
             }),
             new Paragraph({ text: `Изделие: ${productName}` }),
             new Paragraph({ text: `Артикул: ${productPartNumber}` }),
-            new Paragraph({ text: `SN: ${productSerialNumber}` }),
+            new Paragraph({ text: `INV.№: ${productSerialNumber}` }),
             new Paragraph({ text: 'Состав:', spacing: { before: 500 } }),
             createComponentTable(headers, specification),
             new Paragraph({ text: 'Перечень операций:', spacing: { before: 500 } }),
             createOperationsTable(operationHeaders, operationRows),
+            new Paragraph({
+              text: 'Чеклист функционального тестирования:',
+              spacing: { before: 500 }
+            }),
+            createCheckListTable(checkListHeaders, checkListRows),
             new Paragraph({
               text: 'Инженер по качеству: ________________________',
               spacing: { after: 200, before: 1000 }

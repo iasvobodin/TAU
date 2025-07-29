@@ -15,7 +15,9 @@ import { fetchComponent } from '@/api/componentServices'
 import DefectDialog from '@/components/views/DefectDialog.vue'
 import { os, filesystem, server, events, window as neuWindow } from '@neutralinojs/lib'
 import { usePartNumberComponents } from '@/stores/partNumberComponents'
+import { openFileFromNet } from '@/assets/utils/openFileFromNet'
 
+const OK_PATH = import.meta.env.VITE_OK_PATH as string
 const props = defineProps<{
   information: ProductType['information']
   product: Tsp
@@ -222,6 +224,19 @@ const openFolder = () => {
     <v-row justify="center">
       <v-col>
         <h1 class="text-center">Маркировка {{ hasProdductionOperation(stageType) }}</h1>
+      </v-col>
+      <v-col cols="2" class="text-right">
+        <v-tooltip text="Открыть операционную карту" location="bottom">
+          <template v-slot:activator="{ props: activatorProps }">
+            <v-btn
+              @click="openFileFromNet('Гравировка корпуса', OK_PATH, '/OK')"
+              color="gray"
+              v-bind="activatorProps"
+            >
+              <v-icon color="blue" left>mdi-information</v-icon>
+            </v-btn>
+          </template>
+        </v-tooltip>
       </v-col>
     </v-row>
   </v-container>

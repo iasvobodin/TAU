@@ -5,10 +5,6 @@ import { multistream } from "pino-multi-stream";
 const websocketClients = new Set<any>();
 
 export function registerClient(ws: any) {
-  console.log(
-    "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-  );
-
   websocketClients.add(ws);
   ws.on("close", () => websocketClients.delete(ws));
   ws.on("error", () => websocketClients.delete(ws));

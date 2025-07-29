@@ -93,7 +93,7 @@ const saveChecklist = () => {
 </script>
 
 <template>
-  <v-card border="red md" class="ma-4">
+  <v-card border="red" class="ma-0">
     <v-card-title><b>ЧЕК ЛИСТ</b></v-card-title>
     <v-card-text>
       <v-table>

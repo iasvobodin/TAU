@@ -6,6 +6,7 @@ import { usePartNumberComponents } from './stores/partNumberComponents'
 import { useWebSocketStore } from './stores/websockets'
 import ErrorComponent from '@/components/ErrorComponent.vue'
 import { useCounterStore } from './stores/counter'
+import { mountServer } from './assets/utils/mountServer'
 
 const counterStore = useCounterStore()
 const userStore = useUserStore()
@@ -63,28 +64,6 @@ const killSpawnProcess = async (pid: number) => {
 
 // events.on('pidReceived', async (event: CustomEvent<number>) => { })
 
-const mountServer = async () => {
-  try {
-    await filesystem.createDirectory('./.tmp')
-  } catch (error) {
-    console.log(error)
-  }
-
-  try {
-    await server.mount('/.tmp', './.tmp')
-    console.log('server is mounted on /.tmp')
-
-    const mounts = await server.getMounts()
-    console.log('Mounts:', mounts)
-    if (Array.isArray(mounts) && mounts.length === 0) {
-      console.log('No mounts found')
-      await server.mount('/.tmp', window.NL_PATH + '/.tmp')
-      console.log('server is mounted on /.tmp')
-    }
-  } catch (error) {
-    console.log(error)
-  }
-}
 function handleKeydown(event: KeyboardEvent) {
   if (event.ctrlKey && event.shiftKey && event.key === 'F12') {
     counterStore.adminView = !counterStore.adminView
@@ -94,9 +73,8 @@ function handleKeydown(event: KeyboardEvent) {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
-  // wsStore.connect()
   wsStore.initNeutralinoEvents()
-  mountServer()
+  mountServer('./.tmp')
 })
 
 onUnmounted(() => {

@@ -19,6 +19,7 @@ config({ path: `.env.${process.env.NODE_ENV || "development"}` });
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const HOST = process.env.HOST || "localhost";
+const API_KEY = "your-secret-api-key-12345";
 const logger = createLogger();
 
 const options: AppOptions = {
@@ -28,11 +29,9 @@ const options: AppOptions = {
   enableTracing: process.env.ENABLE_TRACING === "true" || false,
 };
 
-const API_KEY = "your-secret-api-key-12345";
-
 const clients = new Map<
   string,
-  { socket: any; clientId: string; lastActive: Date }
+  { socket: any; clientId: string; lastActive: Date; pid: string }
 >();
 
 const app = await buildApp(options);
@@ -89,6 +88,17 @@ const startServer = async (port: number | undefined) => {
     }
   });
 
+  // внутри startServer или после app построен
+  app.get("/clients", async (request, reply) => {
+    const clientList = Array.from(clients.entries()).map(([id, client]) => ({
+      clientId: id,
+      lastActive: client.lastActive,
+      pid: client.pid,
+    }));
+
+    reply.send({ count: clients.size, clients: clientList, tt: clients });
+  });
+
   app.get(
     "/ws",
     { websocket: true },
@@ -97,6 +107,8 @@ const startServer = async (port: number | undefined) => {
 
       let clientId: string | null = null;
 
+      //ЧИТАЕМ СООБЩЕНЬКИ
+
       socket.on("message", (message) => {
         try {
           const messageStr = message.toString();
@@ -104,33 +116,37 @@ const startServer = async (port: number | undefined) => {
           let data;
           data = JSON.parse(messageStr);
 
-          // if (data.command === "appStarted") {
-
-          // }
-          // const pid = JSON.stringify({ command: "pid", value: process.pid });
-          // socket.send(pid);
-          // console.log("SEND MESSAGE", pid);
-
           console.log("Получено сообщение:", data);
 
-          if (data.command === "appStarted") {
-            clientId = data.clientId;
+          if (data.command === "appClientConnect") {
+            clientId = data.user;
             clientId &&
               clients.set(clientId, {
                 socket,
                 clientId,
                 lastActive: new Date(),
+                pid: data.pid,
               });
             console.log(`Активных клиентов: ${clients.size}`);
-            socket.send(JSON.stringify({ command: "pid", value: process.pid }));
+            // socket.send(JSON.stringify({ command: "pid", value: process.pid }));
+          } else if (data.command === "appClientDisconnect") {
+            if (data.user) {
+              clients.delete(data.user);
+              console.log(
+                `Клиент ${data.user} отключён. Активных клиентов: ${clients.size}`
+              );
+            }
           } else if (data.command === "heartbeat") {
-            if (clientId) {
-              clients.set(clientId, {
-                ...clients.get(clientId)!,
-                lastActive: new Date(),
+            if (data.user) {
+              clients.set(data.user, {
+                ...clients.get(data.user)!,
+                lastActive: data.timestamp,
               });
             }
-          } else if (data.command === "pid") {
+          } else if (data.command === "convertDone") {
+            if (clientId) {
+              socket.send(JSON.stringify({ command: "convertDone", clientId }));
+            }
           } else {
             socket.send(JSON.stringify({ error: "Неизвестная команда" }));
           }

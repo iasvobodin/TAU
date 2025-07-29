@@ -1,4 +1,4 @@
-import type { Prisma } from '../../../shared/src'
+import type { Prisma, Specification as SSSP } from '../../../shared/src'
 
 ///for app
 export type SerialNumberData = {
@@ -27,6 +27,7 @@ export type Barcodes = {
   partNumber: string
   type: ModulesType
   fileName?: string
+  imageUrl?: string // <- добавлено
 }
 
 export type StageType =
@@ -164,4 +165,36 @@ export type DefectHistoryAll = Prisma.DefectHistoryGetPayload<{
 // создаём новый тип, где заменим тип actionType
 export type DefectHistoryWithTypedAction = Omit<DefectHistoryAll, 'actionType'> & {
   actionType: ActionType
+}
+
+export type InputData = {
+  serverPath?: string
+  pdfName?: string
+  convertDone?: boolean
+}
+
+// Интерфейс для клиента
+type Client = {
+  clientId: string
+  lastActive: string // ISO-строка даты
+  pid: string
+}
+
+// Интерфейс для структуры ответа API
+export type ClientsResponse = {
+  count: number
+  clients: Client[]
+}
+
+export type CheckList = {
+  title: string
+  values: Record<string, { status: string; comment: string }>
+}
+
+export type Sp = {
+  sp: SSSP | null
+  spPartNumber: string | null
+  qty: string | null
+  serialNumbers: string[] | null
+  orderToProduction: string | null
 }

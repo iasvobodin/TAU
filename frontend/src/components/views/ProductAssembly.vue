@@ -3,7 +3,6 @@ import { onMounted, ref, watch, watchEffect, type Ref } from 'vue'
 import ProductInformation from '@/components/ProductInformation.vue'
 import DefectDialog from '@/components/views/DefectDialog.vue'
 import { updateComponent } from '@/api/componentServices'
-import bwipjs from 'bwip-js'
 import { updateProduct } from '@/api/productServices'
 import { patchDocument, TextRun, PatchType } from 'docx'
 import { createProductionOperationPassed } from '@/api/productionOperationServices'
@@ -12,7 +11,9 @@ import { fetchComponent } from '@/api/componentServices'
 import type { Component, Prisma } from '../../../../shared/src'
 import { useUserStore } from '@/stores/user'
 import type { ModulesType, Barcodes, ProductType, StageType, Tsp } from '@/assets/interfaces'
+import { findFileInDirectory } from '@/assets/utils/findFileInDirectory'
 import { printLabel } from '@/assets/printLabel'
+import { printPassport } from '@/assets/docxProcessor'
 import {
   server,
   filesystem,
@@ -23,7 +24,9 @@ import {
   resources
 } from '@neutralinojs/lib'
 import { createDefectHistory } from '@/api/defectHistoryServices'
-import { printPassport } from '@/assets/docxProcessor'
+import { openSecondWindow } from '@/assets/utils/openSecondWindow'
+import { useCounterStore } from '@/stores/counter'
+import { useWebSocketStore } from '@/stores/websockets'
 
 const props = defineProps<{
   information: ProductType['information']
@@ -33,7 +36,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'done'): void
 }>()
-
+const counterStore = useCounterStore()
+const webSocketStore = useWebSocketStore()
+const userStore = useUserStore()
 const productionOperationAlarm = ref('') // предупреждение об удалении операции!
 const pattern = /^\d{8}(-\d{2})?$/
 const serialNumber = ref('')
@@ -46,6 +51,9 @@ const comment = ref('')
 const assemblyPassedDialog = ref(false)
 const checkLable = ref(false)
 const checkPasport = ref(false)
+const OK_PATH = import.meta.env.VITE_OK_PATH as string
+const KD_PATH = import.meta.env.VITE_KD_PATH as string
+const OTHER_PATH = import.meta.env.VITE_OTHER_PATH as string
 
 const findPartNumberInSpecification = (item: string) => {
   return props.product.productPartNumbers.find((e) => e === item)
@@ -357,10 +365,96 @@ const openFile = async () => {
 
 const openFileKD = async () => {
   // await openPdfInHtml()
-  const OK = props.product.checkList?.doc_ConstructKD
+  const KD = props.product.checkList?.doc_ConstructKD
   os.execCommand(
-    `explorer "\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\КД\\${OK}.pdf"`
+    `explorer "\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\КД\\${KD}.pdf"`
   )
+}
+
+function normalizeUncPath(input: string): string {
+  let path = input.trim()
+
+  // Убираем ведущие двойные слэши // в начале
+  if (path.startsWith('//')) {
+    path = path.slice(2)
+  }
+
+  // Заменяем одинарные прямые слэши на одиночные обратные
+  path = path.replace(/\//g, '\\')
+
+  // Добавляем двойной обратный слэш в начале
+  path = '\\\\' + path
+
+  return path
+}
+
+const openFileOK = async () => {
+  const OK = props.product.checkList?.doc_AssebbleOK
+  console.log(OK)
+
+  if (OK) {
+    const fileEntry = await findFileInDirectory(OK, OK_PATH)
+    if (fileEntry) {
+      const path = normalizeUncPath(fileEntry?.path)
+      console.log(fileEntry, 'fileEntry', path)
+      os.execCommand(`explorer "${path}"`)
+    }
+  }
+}
+
+const openFileFromNet = async (
+  fileName: string | null | undefined = '',
+  dir: string,
+  serverPoint: string
+): Promise<void> => {
+  if (typeof fileName === 'string') {
+    try {
+      const fileEntry = await findFileInDirectory(fileName, dir)
+      console.log(fileEntry, fileName, dir)
+
+      if (!fileEntry) {
+        console.warn('File not found in directory')
+        return
+      }
+      // const normalizedPath = normalizeUncPath(fileEntry.path)
+      await openSecondWindow(dir, fileEntry.entry, serverPoint)
+
+      // await os.execCommand(`explorer "${normalizedPath}"`)
+    } catch (error) {
+      console.error('Failed to open file:', error)
+      throw error
+    }
+  } else {
+    console.log('не указан параметр поиска')
+    return
+  }
+}
+const openFileOK2 = async () => {
+  const fileName = props.product.checkList?.doc_AssebbleOK
+
+  if (!fileName) {
+    console.warn('Файл не указан в checkList.doc_AssebbleOK')
+    return
+  }
+
+  const baseDir =
+    '//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Операционные карты/ОК PDF'
+
+  try {
+    const fileEntry = await findFileInDirectory(fileName, baseDir)
+
+    if (!fileEntry) {
+      console.warn(`Файл "${fileName}" не найден в директории.`)
+      return
+    }
+
+    const uncPath = normalizeUncPath(fileEntry.path)
+    console.log('Открытие файла:', uncPath)
+
+    os.execCommand(`explorer "${uncPath}"`)
+  } catch (error) {
+    console.error('Ошибка при открытии файла:', error)
+  }
 }
 
 const runVbsConversion = async (docxFileName: string) => {
@@ -565,9 +659,14 @@ const createFile = async () => {
   }
 }
 // Чтение серийного номера с обрезкой последних 3 символов
-const getSerialNumber = (specification: Tsp['specification']): string => {
-  const result = Object.entries(specification).find(([key]) => key.includes('плата 2'))
-  const snValue = result?.[1]?.SN
+const getSerialNumber = (specification: Tsp['specification'], moduleType: ModulesType): string => {
+  let snValue: string | undefined
+  if (moduleType === 'PowerSupply') {
+    snValue = Object.entries(specification).find(([key]) => key.includes('плата 1'))?.[1]?.SN
+  } else {
+    snValue = Object.entries(specification).find(([key]) => key.includes('плата 2'))?.[1]?.SN
+  }
+
   return snValue && snValue.endsWith('-02') ? snValue.slice(0, -3) : snValue || ''
 }
 
@@ -591,29 +690,26 @@ const getSerialNumber = (specification: Tsp['specification']): string => {
 //   })
 // }
 
-const openPrintPassportWindow = async (partNumber: string): Promise<void> => {
-  const serialNumber = getSerialNumber(props.product.specification)
-  const isDev = import.meta.env.MODE === 'development'
-  const baseUrl = isDev ? 'http://localhost:5173/print-pdf' : '/print-pdf'
-
-  try {
-    await storage.setData('partNumber', partNumber)
-    await storage.setData('serialNumber', serialNumber)
-  } catch (error) {
-    console.log(error)
+const openPrintPassportWindow = async (): Promise<void> => {
+  //внутренние данные зависят от модуля
+  const partNumber = props.information?.['Артикул изделия']
+  if (!partNumber) {
+    console.log('нет артикула')
+    return
   }
-
+  const serialNumber = getSerialNumber(
+    props.product.specification,
+    props.information?.['Тип изделия']
+  )
+  if (serialNumber === '') {
+    console.log('нет SN')
+    return
+  }
+  const pdfName = `${partNumber}__${serialNumber}.pdf`
   try {
-    await neuWindow.create(baseUrl, {
-      x: 0,
-      y: 0,
-      width: 700,
-      height: 950,
-      maximizable: false,
-      exitProcessOnClose: true,
-      enableInspector: false,
-      processArgs: '--window-id=W_PDF'
-    })
+    await openSecondWindow('./convertFolder', pdfName, '/convertFolder')
+
+    await printPassport(partNumber, serialNumber)
   } catch (error) {
     console.log(error)
   }
@@ -640,19 +736,32 @@ onMounted(() => {
         <v-expansion-panel-title>Документация</v-expansion-panel-title>
         <v-expansion-panel-text>
           <v-container>
-            <v-row>
+            <v-row v-if="props.product.checkList?.doc_AssebbleOK">
               <v-col>
-                <v-btn color="blue" block>Открыть операционную карту</v-btn>
+                <v-btn
+                  @click="openFileFromNet(product.checkList?.doc_AssebbleOK, OK_PATH, '/OK')"
+                  color="blue"
+                  block
+                  >Открыть операционную карту</v-btn
+                >
               </v-col>
             </v-row>
             <v-row v-if="props.product.checkList?.doc_ConstructKD">
               <v-col>
-                <v-btn @click="openFileKD" color="blue" block> Открыть КД </v-btn>
+                <v-btn
+                  @click="openFileFromNet(product.checkList?.doc_ConstructKD, KD_PATH, '/KD')"
+                  color="blue"
+                  block
+                >
+                  Открыть КД
+                </v-btn>
               </v-col>
             </v-row>
             <v-row>
               <v-col>
-                <v-btn color="blue" block>Открыть руководство принтером</v-btn>
+                <v-btn @click="openFileFromNet('TSC', OTHER_PATH, '/OTHER')" color="blue" block
+                  >Открыть руководство принтером</v-btn
+                >
               </v-col>
             </v-row>
           </v-container>
@@ -723,7 +832,7 @@ onMounted(() => {
         <!-- @click="printPassport(props.information?.['Артикул изделия']!, getSerialNumber(props.product.specification) )" -->
         <v-btn
           openPrintPassportWindow
-          @click="openPrintPassportWindow(props.information?.['Артикул изделия']!)"
+          @click="openPrintPassportWindow"
           color="grey-lighten-3"
           block
         >
@@ -745,8 +854,8 @@ onMounted(() => {
     <v-row>
       <v-col>
         <v-btn
-          @click="assemblyPassedDialog = !assemblyPassedDialog"
-          :disabled="!disabledAction"
+          @click="assemblyPassedDialog = true"
+          :disabled="!disabledAction || !!hasProdductionOperation(stageType)"
           color="green-lighten-3"
           block
         >
@@ -754,7 +863,12 @@ onMounted(() => {
         </v-btn>
       </v-col>
       <v-col>
-        <v-btn @click="defectDialog = true" :disabled="!disabledAction" color="red-lighten-3" block>
+        <v-btn
+          @click="defectDialog = true"
+          :disabled="!disabledAction || !!hasProdductionOperation(stageType)"
+          color="red-lighten-3"
+          block
+        >
           Брак
         </v-btn>
       </v-col>

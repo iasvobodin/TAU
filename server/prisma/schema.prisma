@@ -8,6 +8,11 @@ generator zod {
   output   = "../zod"
 }
 
+// datasource db {
+//   provider = "sqlite"
+//   url      = "file:./dev.db"
+// }
+
 datasource db {
   provider          = "sqlserver"
   url               = "sqlserver://10.69.19.59:1433;database=TAU;user=TAUadmin;password=Tau74;encrypt=true;trustServerCertificate=true"

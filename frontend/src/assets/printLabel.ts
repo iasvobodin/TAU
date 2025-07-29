@@ -69,7 +69,19 @@ class FileSystemManager {
     }
   }
 }
-
+class ImageBase64Util {
+  static async getImageBase64(relativePath: string): Promise<string> {
+    try {
+      const binary = await resources.readBinaryFile(relativePath)
+      const base64 = btoa(
+        new Uint8Array(binary).reduce((data, byte) => data + String.fromCharCode(byte), '')
+      )
+      return `data:image/png;base64,${base64}`
+    } catch (error) {
+      throw new Error(`Ошибка чтения изображения: ${JSON.stringify(error)}`)
+    }
+  }
+}
 // Класс для обработки данных этикетки
 class LabelDataProcessor {
   private props: Props
@@ -80,6 +92,9 @@ class LabelDataProcessor {
 
   private getBoardKey(): string {
     const productType = this.props.information!['Тип изделия']
+    if (productType === 'PowerSupply') {
+      return 'плата 1'
+    }
     const isTerminal = productType === 'TerminalBlocks' || productType === 'SupportPanels'
     return isTerminal ? 'плата 1' : 'плата 2'
   }
@@ -101,7 +116,7 @@ class LabelDataProcessor {
     }
   }
 
-  process(): Barcodes {
+  async process(): Promise<Barcodes> {
     const { specification, information, snProduct } = this.props.product
 
     if (!information || !specification) {
@@ -109,6 +124,11 @@ class LabelDataProcessor {
     }
     const type = information['Тип изделия'] as ModulesType
     const fileName = this.getTemplateFileName(type)
+
+    let imageUrl: string | undefined
+    if (type === 'TerminalBlocks' || type === 'SupportPanels') {
+      imageUrl = await ImageBase64Util.getImageBase64('/frontend/dist/EAC.png') // или другое изображение
+    }
 
     if (type === 'Defective') {
       if (!snProduct) {
@@ -120,7 +140,8 @@ class LabelDataProcessor {
         partNumber: information['Артикул изделия'],
         productName: information['Наименование изделия'],
         type,
-        fileName
+        fileName,
+        imageUrl
       }
     }
     const boardKey = this.getBoardKey()
@@ -133,7 +154,8 @@ class LabelDataProcessor {
           partNumber: information['Артикул изделия'],
           productName: information['Наименование изделия'],
           type: information['Тип изделия'] as ModulesType,
-          fileName
+          fileName,
+          imageUrl
         }
       }
     }
@@ -169,6 +191,7 @@ class LabelPrinter {
           data.barcode.endsWith('-02') ? data.barcode.slice(0, -3) : data.barcode
         )
       )
+      .replace('${LabelInfo.imageUrl}', data.imageUrl || '')
       .replace(
         '${LabelInfo.barcode}',
         data.barcode.endsWith('-02') ? data.barcode.slice(0, -3) : data.barcode
@@ -193,14 +216,15 @@ class LabelPrinter {
 
 // Основная функция для печати этикетки
 export const printLabel = async (props: Props): Promise<void> => {
-  console.log(props)
+  // console.log(props)
 
   try {
     const processor = new LabelDataProcessor(props)
-    const labelInfo = processor.process()
-    console.log(window.NL_PATH)
+    const labelInfo = await processor.process()
+    // console.log(window.NL_PATH)
 
     const printer = new LabelPrinter(window.NL_PATH)
+
     await printer.print(labelInfo)
   } catch (error) {
     console.error('Ошибка печати этикетки:', error)

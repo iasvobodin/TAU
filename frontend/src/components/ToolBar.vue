@@ -19,9 +19,9 @@ const tab = ref(null)
     <v-tab v-if="counterStore.adminView" :value="DevView">Администрирование</v-tab>
   </v-tabs>
   <div class="container">
-    <KeepAlive>
-      <component :is="current"></component>
-    </KeepAlive>
+    <!-- <KeepAlive> -->
+    <component :is="current"></component>
+    <!-- </KeepAlive> -->
   </div>
 </template>
 

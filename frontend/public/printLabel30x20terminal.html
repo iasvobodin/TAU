@@ -27,12 +27,24 @@
             align-content: space-evenly;
         }
 
-        .label img {
-            align-self: center;
+        .img_holder {
+            display: grid;
+            width: 100%;
+            grid-template-columns: 8fr 2fr;
+        }
+
+        .img_holder .barcode {
+            align-self: start;
             justify-self: center;
             row-gap: 1mm;
-            width: 100%;
+            width: 95%;
             height: 4mm;
+        }
+
+        .img_holder .eac {
+            width: 4mm;
+            height: 4mm;
+            justify-self: end;
         }
 
         p {
@@ -79,7 +91,10 @@
 
 <body>
     <div class="label">
-        <img src="${barcodeDataUrl}" alt="Barcode" />
+        <div class="img_holder">
+            <img class="barcode" src="${barcodeDataUrl}" alt="Barcode" />
+            <img class="eac" src="${LabelInfo.imageUrl}" alt="EAC" />
+        </div>
         <p class="p8">SN:${LabelInfo.barcode}</p>
         <p class="p8">PN:${LabelInfo.partNumber}</p>
         <p class="p6">${LabelInfo.productName}</p>

@@ -23,8 +23,8 @@ export const fetchProduct = async (productSN: string): Promise<ApiResponse<Produ
 
 export const fetchProductByOrderToProduction = async (
   orderToProduction: string
-): Promise<ApiResponse<ProductAllPayload>> => {
-  return get<ProductAllPayload>(`${API_URL}/products/orderToProduction/${orderToProduction}`)
+): Promise<ApiResponse<ProductAllPayload[]>> => {
+  return get<ProductAllPayload[]>(`${API_URL}/products/orderToProduction/${orderToProduction}`)
 }
 
 export const fetchAllProduct = async (): Promise<ApiResponse<ProductAllPayload[]>> => {
@@ -36,4 +36,7 @@ export const updateProduct = async (
   data: Prisma.ProductUncheckedUpdateInput
 ): Promise<ApiResponse<Product>> => {
   return put<Product>(`${API_URL}/products/${snProduct}`, data)
+}
+export const deleteProduct = async (id: number): Promise<ApiResponse<null>> => {
+  return del<null>(`${API_URL}/products/${id}`)
 }
