@@ -10,7 +10,7 @@
 /frontend/dist/*
 /.tmp/*
 /convertFolder/*
-
+.tmp
 # Neutralinojs client (minified)
 neutralino.js
 
