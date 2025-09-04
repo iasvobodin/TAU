@@ -90,7 +90,7 @@ import type { ProductAllPayload, Information, Tsp } from './interfaces'
 import { fetchPNComponent } from '@/api/partNumberComponentsServices'
 
 // type Information = {
-//   'SN изделия': string
+//   'SN': string
 //   'Артикул изделия': string
 //   'Наименование изделия': string
 //   'Тип изделия': string | null
@@ -136,7 +136,7 @@ export const transformSpecification = async (sp: ProductAllPayload) => {
     id: sp.id,
     snProduct: sp.snProduct,
     information: {
-      'SN изделия': sp.snProduct,
+      SN: sp.snProduct,
       'Артикул изделия': sp.specification.productMP,
       'Наименование изделия': sp.specification.productName,
       'Тип изделия': sp.specification.type as Information['Тип изделия']

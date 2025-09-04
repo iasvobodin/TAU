@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { onBeforeUnmount, ref, watch, computed } from 'vue'
 import {
   VTable,
   VTextarea,
@@ -10,11 +10,17 @@ import {
   VCardTitle,
   VCardText
 } from 'vuetify/components'
-
+import { storage } from '@neutralinojs/lib'
 // Тип для поля шаблона
 interface ChecklistField {
   name: string
   type?: 'text' | 'checkbox' // type опционален для обратной совместимости
+}
+
+// Тип для данных, которые ты передаешь через emit
+interface ChecklistEmitPayload {
+  checklistString: string
+  ss: boolean
 }
 
 // Тип для шаблона чек-листа
@@ -34,27 +40,72 @@ interface ChecklistValues {
 // Пропс для строки шаблона
 const props = defineProps<{
   templateString: string
+  sn: string
 }>()
 const emit = defineEmits<{
-  (e: 'checkList', payload: string): void
+  (e: 'checkList', payload: { checklistString: string; ss: boolean }): void
 }>()
 // Парсим строку шаблона
 const template = ref<ChecklistTemplate>({ title: '', fields: [] })
 const values = ref<ChecklistValues>({})
 
+// watch(
+//   () => props.templateString,
+//   (newVal) => {
+//     console.log(newVal, 'новое значение в шаблоне чеклиста')
+//     try {
+//       template.value = JSON.parse(newVal)
+//       // Инициализируем значения для полей
+//       template.value.fields.forEach((field) => {
+//         values.value[field.name] = {
+//           status: null,
+//           comment: ''
+//         }
+//       })
+//     } catch (e) {
+//       console.error('Invalid template string:', e)
+//     }
+//   },
+//   { immediate: true }
+// )
+
 watch(
   () => props.templateString,
   (newVal) => {
-    console.log(newVal, 'sgsgsg')
+    // console.log(typeof newVal,'newVal',newVal);
+    if (newVal === '') {
+      return
+    }
     try {
-      template.value = JSON.parse(newVal)
-      // Инициализируем значения для полей
-      template.value.fields.forEach((field) => {
-        values.value[field.name] = {
-          status: null,
-          comment: ''
+      const parsed = JSON.parse(newVal)
+
+      // Проверим, есть ли поля с status/comment — значит пришли заполненные данные
+      const hasStatus = parsed.fields.some((f: any) => 'status' in f)
+
+      if (hasStatus) {
+        // Заполняем template и values отдельно
+        template.value = {
+          title: parsed.title,
+          fields: parsed.fields.map((f: any) => ({ name: f.name })) // только имена в шаблон
         }
-      })
+        values.value = {}
+        parsed.fields.forEach((f: any) => {
+          values.value[f.name] = {
+            status: f.status ?? null,
+            comment: f.comment ?? ''
+          }
+        })
+      } else {
+        // Просто шаблон без значений
+        template.value = parsed
+        values.value = {}
+        parsed.fields.forEach((field: any) => {
+          values.value[field.name] = {
+            status: null,
+            comment: ''
+          }
+        })
+      }
     } catch (e) {
       console.error('Invalid template string:', e)
     }
@@ -78,23 +129,65 @@ const isSaveDisabled = computed(() => {
   return !allFieldsFilled || !allFailFieldsCommented || !template.value.fields.length
 })
 
+watch(
+  () => values.value,
+  (newVal) => {
+    console.log('breberb', isSaveDisabled.value)
+
+    // const allFieldsFilled = template.value.fields.every(
+    //   (field) =>
+    //     values.value[field.name]?.status === 'pass' || values.value[field.name]?.status === 'fail'
+    // )
+    saveChecklist(isSaveDisabled.value)
+  },
+  { deep: true }
+)
+
 // Сохранение заполненного чек-листа
-const saveChecklist = () => {
+const saveChecklist = (ss: boolean) => {
   const checklistData = {
     title: template.value.title,
     values: values.value
   }
   const checklistString = JSON.stringify(checklistData)
-  // console.log('Saved checklist:', checklistString);
-  emit('checkList', checklistString)
+
+  emit('checkList', { checklistString, ss })
   // Здесь можно отправить checklistString на сервер
   // Например: await fetch('/api/save-checklist', { method: 'POST', body: checklistString });
 }
+const saveChecklistLocal = async () => {
+  const checklistData = {
+    title: template.value.title,
+    values: values.value
+  }
+  const checklistString = JSON.stringify(checklistData)
+
+  await storage.setData(`checkList_${props.sn}`, checklistString)
+  console.log('checklist saved')
+}
+onBeforeUnmount(() => {
+  console.log('ЗАМОНТИРОВАЛИ!!!!!!!!!!')
+  saveChecklistLocal()
+})
 </script>
 
 <template>
   <v-card border="red" class="ma-0">
-    <v-card-title><b>ЧЕК ЛИСТ</b></v-card-title>
+    <v-row
+      ><v-col>
+        <h3>ЧЕК ЛИСТ</h3>
+      </v-col>
+      <v-col cols="2" class="text-right">
+        <v-tooltip text="Сохранить чеклист локально" location="bottom">
+          <template v-slot:activator="{ props: activatorProps }">
+            <v-btn color="gray" @click="saveChecklistLocal" v-bind="activatorProps">
+              <v-icon color="blue" left>mdi-cloud-upload</v-icon>
+            </v-btn>
+          </template>
+        </v-tooltip>
+      </v-col>
+    </v-row>
+    <!-- <v-card-title><b>ЧЕК ЛИСТ</b></v-card-title> -->
     <v-card-text>
       <v-table>
         <thead>
@@ -139,9 +232,20 @@ const saveChecklist = () => {
           </tr>
         </tbody>
       </v-table>
-      <v-btn color="success" @click="saveChecklist" :disabled="isSaveDisabled">
-        Save Checklist
+      <v-spacer></v-spacer>
+      <!-- <v-row>
+        
+        <v-col>
+             <v-btn block color="success" @click="saveChecklist" :disabled="isSaveDisabled">
+        Сохранить чеклист
       </v-btn>
+        </v-col>
+        <v-col>
+             <v-btn block color="orange" @click="saveChecklistLocal" >
+        Временно сохранить 
+      </v-btn>
+        </v-col>
+      </v-row> -->
     </v-card-text>
   </v-card>
 </template>

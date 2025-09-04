@@ -1,45 +1,9 @@
-<template>
-  <v-container>
-    <v-row>
-      <v-col>
-        <h2>Создание и редактирование чеклистов для функциональных тестов</h2>
-      </v-col>
-    </v-row>
-    <v-row>
-      <v-col>
-        <p>Выберите артикул модуля для создания\редактирования чек-листа</p>
-      </v-col>
-    </v-row>
-    <v-row>
-      <v-col cols="12">
-        <v-autocomplete
-          density="compact"
-          v-model="selectedSP"
-          hide-details="auto"
-          :clearable="true"
-          label="Артикул"
-          :items="specifications?.map((e) => `${e?.productMP} ${e?.productName}`)"
-          variant="solo"
-        ></v-autocomplete>
-      </v-col>
-    </v-row>
-    <v-row v-if="selectedSP">
-      <v-col>
-        <ChecklistTemplateEditor
-          :initial-title="selectedSP.split(' ')[0]"
-          :initial-template-string="templateFromServer"
-          @template="doTemplate"
-        />
-      </v-col>
-    </v-row>
-  </v-container>
-</template>
-
 <script setup lang="ts">
 import { fetchCheckList, updateCheckList } from '@/api/checkListServices'
 import type { Specification } from '@/assets/interfaces'
 import { fetchSpecifications } from '@/api/specificationServices'
 import ChecklistTemplateEditor from '../ChecklistTemplateEditorV2.vue'
+import OperationCardBuilder from '../OperationCardBuilder.vue'
 import { onMounted, ref, watch } from 'vue'
 
 const specifications = ref<Specification[] | null>(null)
@@ -103,3 +67,42 @@ onMounted(async () => {
   await getSpecification()
 })
 </script>
+
+<template>
+  <v-container>
+    <v-row>
+      <v-col>
+        <h2>Создание и редактирование чеклистов для функциональных тестов</h2>
+      </v-col>
+    </v-row>
+    <v-row>
+      <v-col>
+        <p>Выберите артикул модуля для создания\редактирования чек-листа</p>
+      </v-col>
+    </v-row>
+    <v-row>
+      <v-col cols="12">
+        <v-autocomplete
+          density="compact"
+          v-model="selectedSP"
+          hide-details="auto"
+          :clearable="true"
+          label="Артикул"
+          :items="specifications?.map((e) => `${e?.productMP} ${e?.productName}`)"
+          variant="solo"
+        ></v-autocomplete>
+      </v-col>
+    </v-row>
+    <!-- <OperationCardBuilder />  -->
+
+    <v-row v-if="selectedSP">
+      <v-col>
+        <ChecklistTemplateEditor
+          :initial-title="selectedSP.split(' ')[0]"
+          :initial-template-string="templateFromServer"
+          @template="doTemplate"
+        />
+      </v-col>
+    </v-row>
+  </v-container>
+</template>

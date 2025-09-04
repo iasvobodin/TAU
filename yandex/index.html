@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Загрузка на общий диск</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+
+        h2 {
+            color: #333;
+        }
+
+        #preview {
+            display: flex;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .thumb {
+            margin: 5px;
+            border: 1px solid #ccc;
+            padding: 5px;
+            width: 100px;
+            text-align: center;
+        }
+
+        .thumb img {
+            max-width: 90px;
+            max-height: 90px;
+        }
+
+        button {
+            margin: 5px;
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+
+        pre {
+            background: #f4f4f4;
+            padding: 10px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>Управление общим диском</h2>
+
+    <pre id="output"></pre>
+
+    <button id="checkDiskBtn" style="display:none">Проверить информацию о диске</button>
+    <button id="checkFolderBtn" style="display:none">Проверить / создать папку "тау тест"</button>
+    <input type="file" id="fileInput" multiple style="display:none" />
+    <button id="selectBtn" style="display:none">Выбрать фотографии</button>
+    <button id="uploadBtn" style="display:none">Загрузить в "тау тест"</button>
+
+    <div id="preview"></div>
+
+    <script>
+        const CLIENT_ID = "e6e17b4cbbb6476d940403b2b1057da2"; // вставь свой client_id
+        const REDIRECT_URI = window.location.origin + window.location.pathname;
+        let filesToUpload = [];
+
+        function log(msg) {
+            const output = document.getElementById("output");
+            output.textContent += msg + "\n";
+        }
+
+        // Проверка токена в URL
+        const hash = new URLSearchParams(window.location.hash.substring(1));
+        let accessToken = null;
+
+        if (hash.has("access_token")) {
+            accessToken = hash.get("access_token");
+            log("Авторизация успешна. Access token получен.");
+
+            // Показываем кнопки управления диском
+            document.getElementById("checkDiskBtn").style.display = "inline-block";
+            document.getElementById("checkFolderBtn").style.display = "inline-block";
+            document.getElementById("selectBtn").style.display = "inline-block";
+            document.getElementById("uploadBtn").style.display = "inline-block";
+
+            // 1. Проверка информации о диске (корень виртуального диска)
+            document.getElementById("checkDiskBtn").onclick = async () => {
+                try {
+                    const res = await fetch("https://cloud-api.yandex.net/v1/disk/virtual-disks/resources?path=/", {
+                        method: "GET",
+                        headers: { Authorization: `OAuth ${accessToken}` }
+                    });
+                    const data = await res.json();
+                    log("Информация о диске (корень):\n" + JSON.stringify(data, null, 2));
+                } catch (err) {
+                    log("Ошибка при проверке диска: " + err.message);
+                }
+            };
+
+            // 2. Проверка или создание папки "тау тест"
+            document.getElementById("checkFolderBtn").onclick = async () => {
+                const folderPath = "/тау тест";
+                try {
+                    // Проверяем, существует ли папка
+                    const res = await fetch(`https://cloud-api.yandex.net/v1/disk/virtual-disks/resources?path=${encodeURIComponent(folderPath)}`, {
+                        method: "GET",
+                        headers: { Authorization: `OAuth ${accessToken}` }
+                    });
+                    if (res.status === 404) {
+                        log(`Папка "${folderPath}" не найдена. Создаём...`);
+                        // Создаём папку
+                        const createRes = await fetch(`https://cloud-api.yandex.net/v1/disk/virtual-disks/resources?path=${encodeURIComponent(folderPath)}`, {
+                            method: "PUT",
+                            headers: { Authorization: `OAuth ${accessToken}` }
+                        });
+                        if (createRes.ok) {
+                            log(`Папка "${folderPath}" успешно создана.`);
+                        } else {
+                            log(`Ошибка при создании папки: ${createRes.status}`);
+                        }
+                    } else {
+                        const data = await res.json();
+                        log(`Папка "${folderPath}" уже существует:\n` + JSON.stringify(data, null, 2));
+                    }
+                } catch (err) {
+                    log("Ошибка при проверке/создании папки: " + err.message);
+                }
+            };
+
+            // 3. Выбор файлов
+            document.getElementById("selectBtn").onclick = () => {
+                document.getElementById("fileInput").click();
+            };
+
+            document.getElementById("fileInput").onchange = (event) => {
+                filesToUpload = Array.from(event.target.files);
+                const previewDiv = document.getElementById("preview");
+                previewDiv.innerHTML = "";
+                filesToUpload.forEach(file => {
+                    const div = document.createElement("div");
+                    div.className = "thumb";
+                    const img = document.createElement("img");
+                    img.src = URL.createObjectURL(file);
+                    const p = document.createElement("p");
+                    p.textContent = file.name;
+                    div.appendChild(img);
+                    div.appendChild(p);
+                    previewDiv.appendChild(div);
+                });
+            };
+
+            // 4. Загрузка файлов в папку "тау тест"
+            document.getElementById("uploadBtn").onclick = async () => {
+                const folderPath = "/тау тест";
+                for (let file of filesToUpload) {
+                    try {
+                        const uploadRes = await fetch(`https://cloud-api.yandex.net/v1/disk/virtual-disks/resources/upload?path=${encodeURIComponent(folderPath + "/" + file.name)}&overwrite=true`, {
+                            method: "GET",
+                            headers: { Authorization: `OAuth ${accessToken}` }
+                        });
+                        const uploadData = await uploadRes.json();
+                        if (!uploadData.href) throw new Error("Не удалось получить ссылку для загрузки");
+
+                        const putRes = await fetch(uploadData.href, {
+                            method: "PUT",
+                            body: file
+                        });
+                        if (!putRes.ok) throw new Error("Ошибка загрузки файла");
+
+                        log(`Файл "${file.name}" успешно загружен.`);
+                    } catch (err) {
+                        log(`Ошибка при загрузке "${file.name}": ${err.message}`);
+                    }
+                }
+                // Очистка после загрузки
+                filesToUpload = [];
+                document.getElementById("preview").innerHTML = "";
+                document.getElementById("fileInput").value = "";
+            };
+
+        } else {
+            // Если токена нет, редирект на OAuth
+            const authUrl = `https://oauth.yandex.ru/authorize?response_type=token&client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=cloud_api:disk.read cloud_api:disk.write`;
+            window.location.href = authUrl;
+        }
+    </script>
+</body>
+
+</html>

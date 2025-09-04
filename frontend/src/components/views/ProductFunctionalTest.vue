@@ -4,6 +4,7 @@ import type { StageType, ProductType, Tsp } from '@/assets/interfaces'
 import ProductInformation from '@/components/ProductInformation.vue'
 import { updateComponent } from '@/api/componentServices'
 import ChecklistViewer from '../ChecklistViewerV2.vue'
+import { storage } from '@neutralinojs/lib'
 import {
   createProductionOperationPassed,
   createProductionOperationFailed,
@@ -23,6 +24,8 @@ import { updateProduct } from '@/api/productServices'
 import { openFileFromNet } from '@/assets/utils/openFileFromNet'
 
 const OK_PATH = import.meta.env.VITE_OK_PATH as string
+const KD_PATH = import.meta.env.VITE_KD_PATH as string
+const OTHER_PATH = import.meta.env.VITE_OTHER_PATH as string
 const emit = defineEmits<{
   (e: 'done'): void
 }>()
@@ -68,6 +71,7 @@ const testPassed = async () => {
     usedComponents: props.product.productSerialNumbers.join(', '),
     checkList: checkList.value
   }
+  console.log(productionOperatioData, 'productionOperatioData')
 
   const resultCreate = await createProductionOperationPassed(productionOperatioData)
   console.log(resultCreate, 'resultCreate')
@@ -129,11 +133,69 @@ const testFailed = async (failedComponents: string[], comment: string) => {
 }
 const checkList = ref('')
 
-const saveCheckList = (e: string) => {
-  console.log(e)
-  checkList.value = e
+const saveCheckList = async (payload: { checklistString: string; ss: boolean }) => {
+  console.log(payload)
+
+  const { checklistString, ss } = payload
+  if (!ss) {
+    checkList.value = checklistString
+  } else {
+    checkList.value = ''
+  }
+
+  // await storage.setData(`checkList_${props.information?.['SN изделия']}`, checkList.value)
+  // console.log('checklist saved');
 }
 
+function fillServerTemplateFromStrings(
+  localCheckListStr: string,
+  serverCheckListStr: string
+): string {
+  try {
+    // Парсим входные JSON строки
+    const localCheckList = JSON.parse(localCheckListStr)
+    const serverCheckList = JSON.parse(serverCheckListStr)
+
+    // Заполняем серверный шаблон
+    const filledTemplate = {
+      title: serverCheckList.title,
+      fields: serverCheckList.fields.map((field: { name: string }) => {
+        const localValue = localCheckList.values[field.name]
+        if (localValue) {
+          return {
+            ...field,
+            status: localValue.status,
+            comment: localValue.comment
+          }
+        }
+        return field
+      })
+    }
+
+    // Возвращаем результат в виде строки
+    // return JSON.stringify(filledTemplate, null, 2);
+    return JSON.stringify(filledTemplate)
+  } catch (error) {
+    console.error('Ошибка при парсинге JSON или заполнении шаблона:', error)
+    // Можно вернуть пустой JSON или ошибку в строке, в зависимости от требований
+    return serverCheckListStr
+  }
+}
+
+const finalcheckListTemplate = ref('')
+const tryToGetLocalCecklist = async () => {
+  try {
+    const serverCheckList = props.product.checkList?.checkListTemplate!
+    const localCheckList = await storage.getData(
+      `checkList_${props.information?.['Инв. № изделия']}`
+    )
+    finalcheckListTemplate.value = fillServerTemplateFromStrings(localCheckList, serverCheckList)
+  } catch (error) {
+    finalcheckListTemplate.value = props.product.checkList?.checkListTemplate!
+    console.log(error)
+  }
+}
+tryToGetLocalCecklist()
 const hasProdductionOperation = (stageType: string) => {
   //ищем по ключу наличие производственных операций
   const stage = props.product.productionOperations.some((e) => e.stageType === stageType)
@@ -152,7 +214,7 @@ const hasProdductionOperation = (stageType: string) => {
           Функциональное тестирование {{ hasProdductionOperation(stageType) || '' }}
         </h1>
       </v-col>
-      <v-col cols="2" class="text-right">
+      <!-- <v-col cols="2" class="text-right">
         <v-tooltip text="Открыть операционную карту" location="bottom">
           <template v-slot:activator="{ props: activatorProps }">
             <v-btn
@@ -164,17 +226,57 @@ const hasProdductionOperation = (stageType: string) => {
             </v-btn>
           </template>
         </v-tooltip>
-      </v-col>
+      </v-col> -->
     </v-row>
   </v-container>
 
-  <ProductInformation :information="props.product.information" />
-  <v-container class="pa-0 mt-5">
+  <ProductInformation :information="props.information" />
+  <v-container>
+    <v-expansion-panels>
+      <v-expansion-panel>
+        <v-expansion-panel-title>Документация</v-expansion-panel-title>
+        <v-expansion-panel-text>
+          <v-container>
+            <v-row v-if="props.product.checkList?.doc_AssebbleOK">
+              <v-col>
+                <v-btn
+                  @click="openFileFromNet(product.checkList?.doc_TestOK, OK_PATH, '/OK')"
+                  color="blue"
+                  block
+                  >Открыть операционную карту</v-btn
+                >
+              </v-col>
+            </v-row>
+            <v-row v-if="props.product.checkList?.doc_ConstructKD">
+              <v-col>
+                <v-btn
+                  @click="openFileFromNet(product.checkList?.doc_ConstructKD, KD_PATH, '/KD')"
+                  color="blue"
+                  block
+                >
+                  Открыть КД
+                </v-btn>
+              </v-col>
+            </v-row>
+            <!-- <v-row>
+              <v-col>
+                <v-btn @click="openFileFromNet('TSC', OTHER_PATH, '/OTHER')" color="blue" block
+                  >Открыть руководство принтером</v-btn
+                >
+              </v-col>
+            </v-row> -->
+          </v-container>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
+    </v-expansion-panels>
+  </v-container>
+  <v-container class="pa-0 pt-10 mt-5">
     <v-row>
       <v-col>
         <ChecklistViewer
+          :sn="props.information?.['Инв. № изделия']!"
           @checkList="saveCheckList"
-          :template-string="props.product.checkList?.checkListTemplate!"
+          :template-string="finalcheckListTemplate"
         />
       </v-col>
     </v-row>

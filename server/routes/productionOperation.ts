@@ -128,6 +128,7 @@ export default function productionOperationRoutes(app: FastifyInstance) {
               status: data.status,
               user: data.user,
               comment: data.comment,
+              checkList: data.checkList,
               usedComponents: data.usedComponents,
               date: data.date ? new Date(data.date) : undefined, // ✅ добавлено
             },

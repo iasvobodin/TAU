@@ -163,12 +163,25 @@ const getProduct = async (cleared: boolean = true) => {
   const result = await findTauSerialNumber(productSerialNumber.value)
 
   if (result && result.data) {
-    console.log(result.data, 'product')
+    // console.log(result.data, 'product')
     // console.log(tsp.value)
     tsp.value = await transformSpecification(result.data)
+    // console.log(result.data, 'result.dataresult.dataresult.dataresult.dataresult.dataresult.dataresult.data');
 
+    if ((result.data.specification.type as Information['Тип изделия']) === 'TerminalBlocks') {
+    }
+
+    const board2PN = result.data.specification.electronicBoard2 // "AB80277A"
+    const component = result.data.components.find((c) => c.pnComponentId === board2PN)
+
+    const board1PN = result.data.specification.electronicBoard1 // "AB80277A"
+    const component1 = result.data.components.find((c) => c.pnComponentId === board1PN)
+
+    const serialNumber = component ? component.snComponent : component1?.snComponent
+    // console.log(serialNumber, 'выведет серийный номер платы 2 или null, если нет');  // выведет серийный номер платы 2 или null, если нет
     product.information = {
-      'SN изделия': result.data.snProduct,
+      SN: serialNumber,
+      'Инв. № изделия': result.data.snProduct,
       'Артикул изделия': result.data.specification.productMP,
       'Наименование изделия': result.data.specification.productName,
       'Тип изделия': result.data.specification.type as Information['Тип изделия']
@@ -277,7 +290,7 @@ onMounted(() => {
     </v-row>
   </v-container>
   <div v-if="product.error">{{ product.error }}</div>
-  <ProductInformation v-else-if="product.information" :information="tsp!.information" />
+  <ProductInformation v-else-if="product.information" :information="product.information" />
   <v-container v-if="product.specification && !product.failed">
     <v-row align="center">
       <v-col>
@@ -318,7 +331,7 @@ onMounted(() => {
             generatePasport(
               tsp.information['Наименование изделия'],
               tsp.information['Артикул изделия'],
-              tsp.information['SN изделия'],
+              tsp.information['Инв. № изделия']!,
               tsp.specification,
               tsp.productionOperations
             )
@@ -349,7 +362,7 @@ onMounted(() => {
         <v-icon>mdi-close</v-icon>
       </v-btn>
     </v-toolbar>
-    <v-card v-if="tsp">
+    <v-card class="pb-12" v-if="tsp">
       <component
         @done="closeDialogAndCheck"
         :is="current"

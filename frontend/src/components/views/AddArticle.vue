@@ -7,6 +7,7 @@ import { fetchSpecifications } from '@/api/specificationServices'
 import { createDocWithBarcodes } from '@/assets/barcodeGenerator'
 import type { ModulesType, SerialNumberData } from '@/assets/interfaces'
 import { server, filesystem, os, events, window as neuWindow } from '@neutralinojs/lib'
+import { generateQr } from '@/assets/generateQR'
 const props = defineProps({
   invoice: {
     type: String,
@@ -21,6 +22,7 @@ const props = defineProps({
   //   required: true
   // }
 })
+const QRDialog = ref(false)
 const errorStore = useErrorStore()
 const emit = defineEmits<{
   (e: 'someEvent', payload: SerialNumberData[]): void
@@ -41,7 +43,8 @@ const headers = reactive([
   { title: 'Поставщик', key: 'supplier', width: '10%', align: 'center' as const },
   { title: 'Комментарий', key: 'comment', width: '30%', align: 'center' as const },
   { title: 'Брак', key: 'status', width: '5%', align: 'center' as const },
-  { title: 'Удалить', key: 'actions', width: '5%', align: 'center' as const }
+  { title: 'Удалить', key: 'actions', width: '5%', align: 'center' as const },
+  { title: 'Фото', key: 'photo', width: '5%', align: 'center' as const }
 ])
 
 const defaultItem: SerialNumberData = reactive({ name: '', partNumber: '' })
@@ -191,6 +194,11 @@ const openFile = async () => {
     `explorer "\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\Операционные карты\\ОК МП-ТАУ-001-24 Входной контроль.pdf"`
   )
 }
+const qrurl = ref('')
+const createQR = async (item: SerialNumberData) => {
+  qrurl.value = await generateQr(item)
+  QRDialog.value = true
+}
 </script>
 
 <template>
@@ -268,10 +276,14 @@ const openFile = async () => {
       <p class="text-red" v-if="!item.invoice">ЗАПОЛНИТЬ</p>
       <p v-else>{{ item.invoice }}</p>
     </template>
+
     <template v-slot:item.actions="{ item }">
       <v-icon size="small" @click="deleteItem(item)">mdi-delete</v-icon>
       <v-icon v-if="item._added" icon="mdi-checkbox-marked-circle" color="green"></v-icon>
       <v-icon v-if="item._rejected" icon="mdi-cancel" color="red"></v-icon>
+    </template>
+    <template v-slot:item.photo="{ item }">
+      <v-icon size="small" @click="createQR(item)">mdi-paperclip</v-icon>
     </template>
   </v-data-table-virtual>
 
@@ -294,6 +306,17 @@ const openFile = async () => {
       </v-col> -->
     </v-row>
   </v-container>
+  <v-dialog v-model="QRDialog" width="auto">
+    <v-card class="pa-0" justify="center">
+      <v-container>
+        <v-row>
+          <v-col>
+            <img :src="qrurl" alt="QR" />
+          </v-col>
+        </v-row>
+      </v-container>
+    </v-card>
+  </v-dialog>
 </template>
 
 <style>

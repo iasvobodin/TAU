@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { fetchFailedComponents } from '@/api/componentServices'
+import { fetchFailedComponents, updateComponent } from '@/api/componentServices'
 import { onMounted, computed, ref, type Ref } from 'vue'
 import { fetchFailedProductionOperations } from '@/api/productionOperationServices'
 import type { Component, DefectHistory, Prisma } from '../../../../shared/src'
 import { useUserStore } from '@/stores/user'
-import { createDefectHistory } from '@/api/defectHistoryServices'
+import { createDefectHistory, deleteDefectHistory } from '@/api/defectHistoryServices'
 import type {
   ActionType,
   ComponentAllPayload,
@@ -103,23 +103,46 @@ function getNextStage(current: ActionType): ActionType | null {
 async function advanceToNextStage(sn: string, next: ActionType) {
   console.log(`Переводим компонент ${sn} на следующий этап: ${next}`)
 
-  try {
-    const dh = await createDefectHistory({
-      componentSN: sn,
-      actionType: next,
-      status: 'on_hold',
-      user: useUserStore().userFullName,
-      description: comment.value
-    })
-    console.log('создали дефект хистори', dh.data)
-  } catch (error) {
-    console.log(error)
+  if (next === 'CloseAndReport') {
+    try {
+      const dh = await createDefectHistory({
+        componentSN: sn,
+        actionType: next,
+        status: 'accepted',
+        user: useUserStore().userFullName,
+        description: comment.value
+      })
+      console.log('создали дефект хистори c закрытием', dh.data)
+
+      try {
+        await updateComponent(sn, {
+          status: 'accepted'
+        })
+        console.log('поменяли статус')
+      } catch (error) {
+        throw new Error('ошибка обновления компонентов')
+      }
+    } catch (error) {
+      console.log(error)
+    }
+  } else {
+    try {
+      const dh = await createDefectHistory({
+        componentSN: sn,
+        actionType: next,
+        status: 'on_hold',
+        user: useUserStore().userFullName,
+        description: comment.value
+      })
+      console.log('создали дефект хистори', dh.data)
+    } catch (error) {
+      console.log(error)
+    }
   }
+
   await getFailedHistory()
   defectDialog.value = false
   comment.value = ''
-  // Тут ты можешь вызвать API:
-  // await api.advanceDefectStage({ componentSN: sn, actionType: next })
 }
 const changeStage = (sn: string) => {
   currentSN.value = sn
@@ -134,6 +157,27 @@ const getFailedHistory = async () => {
   }
 }
 
+function removeDuplicates(items: DefectHistoryWithTypedAction[]): DefectHistoryWithTypedAction[] {
+  const uniqueItems: Map<string, DefectHistoryWithTypedAction> = new Map()
+
+  items.forEach((item) => {
+    const key = `${item.componentSN}-${item.status}`
+
+    // Если еще нет такого ключа, добавляем объект в Map
+    if (!uniqueItems.has(key)) {
+      uniqueItems.set(key, item)
+    }
+  })
+
+  // Преобразуем Map обратно в массив
+  return Array.from(uniqueItems.values())
+}
+
+// // Пример использования
+// const items: Item[] = [
+//   // Пример объектов
+// ];
+
 function formatDate(timestamp: Date) {
   const date = new Date(timestamp)
   return date.toLocaleString('ru-RU', {
@@ -145,9 +189,47 @@ function formatDate(timestamp: Date) {
   })
 }
 
+// Функция для удаления дубликатов с удалением из базы
+async function removeDuplicatesAndDelete(
+  items: DefectHistoryWithTypedAction[]
+): Promise<DefectHistoryWithTypedAction[]> {
+  const uniqueItems: Map<string, DefectHistoryWithTypedAction> = new Map()
+
+  for (const item of items) {
+    const key = `${item.componentSN}-${item.status}`
+
+    if (uniqueItems.has(key)) {
+      // Если найден дубликат, удаляем его из базы данных
+      await deleteDefectHistory(item.id)
+    } else {
+      // Если уникальный, добавляем в Map
+      uniqueItems.set(key, item)
+    }
+  }
+
+  // Преобразуем Map обратно в массив уникальных элементов
+  return Array.from(uniqueItems.values())
+}
+
+// // Пример использования
+// const items: DefectHistoryWithTypedAction[] = [
+//   // Здесь будут объекты типа Item
+// ];
+
+async function processItems() {
+  const uniqueItems = await removeDuplicatesAndDelete(failedComponents.value!)
+  console.log(uniqueItems)
+}
+
 onMounted(async () => {
   await getFailedHistory()
   console.log(failedComponents.value)
+
+  const uniqueItems = removeDuplicates(failedComponents.value!)
+  console.log('unic', uniqueItems)
+
+  // Запуск обработки
+  // processItems();
 })
 </script>
 

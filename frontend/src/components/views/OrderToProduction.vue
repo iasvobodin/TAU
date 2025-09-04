@@ -176,7 +176,8 @@ onMounted(async () => {
 <template>
   <v-container>
     <v-row class="mb-6">
-      <h1>Прверка заказа на производство перед передачей на склад</h1> <br>
+      <h1>Прверка заказа на производство перед передачей на склад</h1>
+      <br />
     </v-row>
     <v-row align="center" justify="center">
       <v-col> <h2>Введите номер заказа на производство</h2></v-col>
@@ -228,9 +229,7 @@ onMounted(async () => {
   <v-container class="pa-0 mt-4">
     <v-expansion-panels>
       <v-expansion-panel>
-        <v-expansion-panel-title class="custom-title"
-          >Подробно</v-expansion-panel-title
-        >
+        <v-expansion-panel-title class="custom-title">Подробно</v-expansion-panel-title>
         <v-expansion-panel-text>
           <v-row>
             <v-col>

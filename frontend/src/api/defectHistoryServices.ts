@@ -29,3 +29,7 @@ export const fetchDefectHistoryAll = async (): Promise<
 // ): Promise<ApiResponse<ProductAllPayload>> => {
 //   return get<ProductAllPayload>(`${API_URL}/products/orderToProduction/${orderToProduction}`)
 // }
+
+export const deleteDefectHistory = async (id: number): Promise<ApiResponse<null>> => {
+  return del<null>(`${API_URL}/defect-history-del/${id}`)
+}

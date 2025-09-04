@@ -9,10 +9,13 @@ import { useCounterStore } from '@/stores/counter'
 const counterStore = useCounterStore()
 const current = shallowRef(InputControl)
 const tab = ref(null)
+const isDev = import.meta.env.MODE === 'development'
+const bgColor = isDev ? 'red' : 'primary'
+console.log(isDev, bgColor, 'isDev')
 </script>
 
 <template>
-  <v-tabs align-tabs="title" v-model="current" bg-color="primary">
+  <v-tabs align-tabs="title" v-model="current" :bg-color="bgColor">
     <v-tab :value="InputControl">Входной контроль</v-tab>
     <v-tab :value="PreProduction">Подготовка производства</v-tab>
     <v-tab :value="AssemblyView">Производство</v-tab>

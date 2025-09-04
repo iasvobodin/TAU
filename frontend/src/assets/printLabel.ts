@@ -92,6 +92,11 @@ class LabelDataProcessor {
 
   private getBoardKey(): string {
     const productType = this.props.information!['Тип изделия']
+    const cableType = this.props.information?.['Наименование изделия'].toLocaleLowerCase()
+    if (cableType?.includes('кабель')) {
+      return 'кабель'
+    }
+
     if (productType === 'PowerSupply') {
       return 'плата 1'
     }
@@ -145,6 +150,8 @@ class LabelDataProcessor {
       }
     }
     const boardKey = this.getBoardKey()
+    console.log(boardKey, 'boardKey')
+
     for (const [key, value] of Object.entries(specification)) {
       if (key.toLowerCase().includes(boardKey)) {
         console.log(`Найдена плата для ${information['Тип изделия']}`)

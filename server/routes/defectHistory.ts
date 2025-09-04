@@ -26,4 +26,18 @@ export default function defectHistoryRoutes(app: FastifyInstance) {
       reply.code(500).send({ error: "Internal Server Error" });
     }
   });
+
+  app.delete("/defect-history-del/:id", async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      await app.prisma.defectHistory.delete({
+        where: { id: parseInt(id) },
+      });
+      reply.code(204).send();
+    } catch (error) {
+      reply.code(500).send({
+        error: `${JSON.stringify(error)}"Failed to delete defect"`,
+      });
+    }
+  });
 }

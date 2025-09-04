@@ -1,17 +1,5 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import {
-  VTextField,
-  VBtn,
-  VCard,
-  VCardTitle,
-  VCardText,
-  VRow,
-  VCol,
-  VDialog,
-  VCardActions,
-  VSpacer
-} from 'vuetify/components'
 
 // Тип для поля шаблона
 interface ChecklistField {
@@ -144,7 +132,15 @@ function sanitizeObject(obj: any): any {
   }
   return obj
 }
-
+// Перемещение поля вверх или вниз
+const moveField = (index: number, direction: 'up' | 'down') => {
+  const newIndex = direction === 'up' ? index - 1 : index + 1
+  if (newIndex >= 0 && newIndex < template.value.fields.length) {
+    const temp = template.value.fields[index]
+    template.value.fields[index] = template.value.fields[newIndex]
+    template.value.fields[newIndex] = temp
+  }
+}
 const saveTemplate = () => {
   const safeTemplate = sanitizeObject(template.value)
   templateString.value = JSON.stringify(safeTemplate)
@@ -156,59 +152,108 @@ const saveTemplate = () => {
 <template>
   <v-card class="ma-4">
     <v-card-title>Создание/редактирование шаблона для чек-листа</v-card-title>
-    <v-card-text>
+    <v-card-text class="mt-4">
       <!-- Заголовок шаблона -->
       <v-text-field
         v-model="template.title"
         label="Артикул модуля"
         variant="outlined"
         class="mb-4"
+        density="compact"
       />
 
       <!-- Добавление нового поля -->
-      <v-row class="mb-4">
+      <v-row class="mb-2">
         <v-col cols="10">
           <v-text-field
             v-model="newField.name"
             label="Название поля в чек-листе"
             variant="outlined"
+            hide-details="auto"
+            density="compact"
             :disabled="editingField.index !== null"
           />
         </v-col>
-        <v-col cols="2">
+        <v-col class="d-flex justify-center align-center pa-0 ma-0" cols="2">
           <v-btn color="primary" @click="addField" :disabled="editingField.index !== null">
-            Add Field
+            Добавить
           </v-btn>
         </v-col>
       </v-row>
 
       <!-- Список полей -->
       <div v-if="template.fields.length">
-        <h3>Added Fields:</h3>
-        <v-row class="table-header mb-2" style="border-bottom: 1px solid #ccc; font-weight: bold">
-          <v-col cols="9">Field Name</v-col>
-          <v-col cols="3">Actions</v-col>
+        <h2>Чек-лист</h2>
+        <v-row
+          class="table-header mb-2 mt-4"
+          style="border-bottom: 1px solid #ccc; font-weight: bold"
+        >
+          <v-col class="d-flex justify-center align-center" cols="1">Сорт</v-col>
+          <v-col cols="9">Название</v-col>
+          <v-col class="d-flex justify-center align-center" cols="2">Редактировать</v-col>
         </v-row>
 
         <v-row
           v-for="(field, index) in template.fields"
           :key="index"
-          class="table-row mb-1"
-          style="border: 1px solid #ccc; border-radius: 4px; padding: 8px"
-          justify-content="space-around"
+          class="table-row"
+          style="border: 1px solid #ccc; border-radius: 4px; padding: 1px"
         >
-          <v-col cols="9">{{ field.name }}</v-col>
-          <v-col cols="3">
-            <v-btn color="warning" @click="startEditingField(index)">Edit</v-btn>
-            <v-btn color="error" @click="deleteField(index)" class="ml-14">Delete</v-btn>
+          <v-col cols="1" class="d-flex flex-column justify-center align-center pa-0">
+            <!-- Стрелочка вверх -->
+            <v-btn
+              variant="text"
+              size="x-small"
+              :disabled="index === 0"
+              @click="moveField(index, 'up')"
+            >
+              <v-icon size="30" :color="index === 0 ? 'grey' : 'blue'">mdi-chevron-up</v-icon>
+            </v-btn>
+            <!-- Стрелочка вниз -->
+            <v-btn
+              variant="text"
+              size="x-small"
+              :disabled="index === template.fields.length - 1"
+              @click="moveField(index, 'down')"
+              class="mt-1 pa-0"
+            >
+              <v-icon size="30" :color="index === template.fields.length - 1 ? 'grey' : 'blue'">
+                mdi-chevron-down
+              </v-icon>
+            </v-btn>
+          </v-col>
+
+          <v-col pa-0 ma-0 cols="9" class="d-flex justify-start align-center">{{
+            field.name
+          }}</v-col>
+          <v-col cols="2" class="d-flex justify-center align-center">
+            <!-- Кнопка редактирования -->
+            <v-btn variant="text" size="small" color="warning" @click="startEditingField(index)">
+              <v-icon size="22">mdi-pencil</v-icon>
+            </v-btn>
+
+            <!-- Кнопка удаления -->
+            <v-btn
+              variant="text"
+              size="small"
+              color="error"
+              @click="deleteField(index)"
+              class="ml-1"
+            >
+              <v-icon size="22">mdi-delete</v-icon>
+            </v-btn>
           </v-col>
         </v-row>
       </div>
 
       <!-- Кнопка сохранить шаблон -->
-      <v-btn color="success" @click="saveTemplate" :disabled="!template.title">
-        Save Template
-      </v-btn>
+      <v-row class="mt-4">
+        <v-col cols="12" class="d-flex justify-end">
+          <v-btn block color="success" @click="saveTemplate" :disabled="!template.title">
+            Сохранить шаблон
+          </v-btn>
+        </v-col>
+      </v-row>
     </v-card-text>
   </v-card>
 

@@ -62,7 +62,8 @@ export type ComponentAllPayload = Prisma.ComponentGetPayload<{
 }>
 
 export type Information = {
-  'SN изделия': string
+  'Инв. № изделия'?: string
+  SN?: string
   'Артикул изделия': string
   'Наименование изделия': string
   'Тип изделия': ModulesType
