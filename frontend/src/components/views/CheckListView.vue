@@ -3,21 +3,22 @@ import { fetchCheckList, updateCheckList } from '@/api/checkListServices'
 import type { Specification } from '@/assets/interfaces'
 import { fetchSpecifications } from '@/api/specificationServices'
 import ChecklistTemplateEditor from '../ChecklistTemplateEditorV2.vue'
-import OperationCardBuilder from '../OperationCardBuilder.vue'
+// import OperationCardBuilder from '../OperationCardBuilder.vue'
 import { onMounted, ref, watch } from 'vue'
+import { useErrorStore } from '@/stores/errorStore'
 
+const errorStore = useErrorStore()
 const specifications = ref<Specification[] | null>(null)
+const templateCheckList = ref('')
 const selectedSP = ref('')
 const templateFromServer = ref('')
 const checkListFromServer = ref<Specification['checkList'][] | null>(null)
-const templateCheckList = ref('')
-
 const getSpecification = async () => {
   try {
     const sp = await fetchSpecifications()
     if (sp.data) {
       specifications.value = sp.data
-      console.log(sp.data)
+      // console.log(sp.data)
 
       checkListFromServer.value = specifications.value?.map((e) => e.checkList)
     }
@@ -31,7 +32,9 @@ const doTemplate = async (e: string) => {
     await updateCheckList(selectedSP.value.split(' ')[0], {
       checkListTemplate: e
     })
-    console.log('event', e)
+    errorStore.addInfo(`Чек лист успешно сохранён в базу данных`)
+    setTimeout(errorStore.removeInfo, 5000)
+    console.log('event', JSON.parse(e))
   } catch (error) {
     console.log(error)
   }
@@ -46,11 +49,11 @@ watch(
       //попробовать запросить чек лист
       try {
         const result = await fetchCheckList(newValue.split(' ')[0])
-        console.log(newValue.split(' ')[0], result.data)
+        // console.log(newValue.split(' ')[0], result.data)
         if (result.data?.checkListTemplate) {
           templateFromServer.value = result.data?.checkListTemplate
           templateCheckList.value = result.data?.checkListTemplate
-          console.log(templateCheckList.value, templateFromServer.value)
+          // console.log(JSON.parse(templateCheckList.value), JSON.parse(templateFromServer.value))
         } else {
           templateFromServer.value = ''
           templateCheckList.value = ''

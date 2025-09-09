@@ -14,6 +14,7 @@ import checkListRoutes from "./routes/checkList";
 import defectHistoryRoutes from "./routes/defectHistory";
 import { config } from "dotenv";
 import { registerClient, createLogger } from "./logger";
+import imageRoutes from "./routes/uploadImages";
 
 config({ path: `.env.${process.env.NODE_ENV || "development"}` });
 
@@ -61,6 +62,7 @@ testRoutes(app);
 partNumberComponentRoutes(app);
 checkListRoutes(app);
 defectHistoryRoutes(app);
+imageRoutes(app);
 
 app.post("/shutdown", async (request, reply) => {
   const clientApiKey = request.headers["x-api-key"];

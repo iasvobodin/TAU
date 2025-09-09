@@ -3,6 +3,9 @@ import cors from "@fastify/cors";
 import type { FastifyServerOptions } from "fastify";
 import prismaPlugin from "./prisma.plugin";
 import websocketPlugin from "@fastify/websocket";
+import fastifyMultipart from "@fastify/multipart";
+import fastifyStatic from "@fastify/static";
+import fs from "fs/promises";
 
 // Расширяем AppOptions для передачи обязательных параметров Prisma
 export interface AppOptions extends Partial<FastifyServerOptions> {
@@ -12,10 +15,17 @@ export interface AppOptions extends Partial<FastifyServerOptions> {
 }
 
 async function buildApp(options: AppOptions = {}) {
+  // const fastify = Fastify({
+  //   logger: options.logger || false, // По умолчанию false, если не указано
+  // });
   const fastify = Fastify({
-    logger: options.logger || false, // По умолчанию false, если не указано
+    logger: options.logger
+      ? {
+          level: options.log_level || "info",
+          transport: { target: "pino-pretty", options: { colorize: true } },
+        }
+      : false,
   });
-
   // Передаём опции в prismaPlugin
   await fastify.register(prismaPlugin, {
     data_model: options.data_model || "default_model",
@@ -27,6 +37,15 @@ async function buildApp(options: AppOptions = {}) {
   await fastify.register(cors, {
     origin: "*",
     methods: ["POST", "GET", "PUT", "DELETE"],
+  });
+
+  const uploadDir = new URL("./uploads", import.meta.url).pathname;
+
+  await fastify.register(fastifyMultipart);
+  await fastify.register(fastifyStatic, {
+    // root: path.join(process.cwd(), "uploads"),
+    root: uploadDir,
+    prefix: "/uploads/",
   });
 
   return fastify;

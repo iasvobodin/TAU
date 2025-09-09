@@ -11,5 +11,8 @@ module.exports = {
   ],
   parserOptions: {
     ecmaVersion: 'latest'
+  },
+  rules: {
+    'no-unreachable': 'off'  // 👈 Добавь эту строку
   }
 }

@@ -70,7 +70,7 @@ const fetchData = async () => {
     const result = await getClients()
     if (result.data) {
       clientsData.value = result.data
-      console.log(result.data)
+      // console.log(result.data)
     }
   } catch (error) {
     console.error('Ошибка загрузки данных:', error)

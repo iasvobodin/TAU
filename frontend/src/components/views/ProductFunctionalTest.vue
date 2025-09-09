@@ -3,7 +3,7 @@ import { onMounted, ref, watch, watchEffect, type Ref } from 'vue'
 import type { StageType, ProductType, Tsp } from '@/assets/interfaces'
 import ProductInformation from '@/components/ProductInformation.vue'
 import { updateComponent } from '@/api/componentServices'
-import ChecklistViewer from '../ChecklistViewerV2.vue'
+import ChecklistViewer from '../_ChecklistViewerV2.vue'
 import { storage } from '@neutralinojs/lib'
 import {
   createProductionOperationPassed,
@@ -147,6 +147,38 @@ const saveCheckList = async (payload: { checklistString: string; ss: boolean }) 
   // console.log('checklist saved');
 }
 
+const debugJsonParse = (jsonString: string) => {
+  console.log('=== JSON DEBUG START ===')
+  console.log('Full string:', jsonString)
+  console.log('String length:', jsonString.length)
+
+  // Покажем первые 20 символов с их кодами
+  const first20 = jsonString.substring(0, 20)
+  console.log('First 20 chars:', first20)
+  console.log('Char codes:')
+  for (let i = 0; i < first20.length; i++) {
+    console.log(`  Position ${i}: '${first20[i]}' (code: ${first20.charCodeAt(i)})`)
+  }
+
+  // Особенно посмотрим на позицию 7 (где ошибка)
+  if (jsonString.length > 7) {
+    console.log(`Problematic position 7: '${jsonString[7]}' (code: ${jsonString.charCodeAt(7)})`)
+    console.log(
+      'Context around position 7:',
+      jsonString.substring(Math.max(0, 5), Math.min(jsonString.length, 15))
+    )
+  }
+
+  console.log('=== JSON DEBUG END ===')
+
+  try {
+    return JSON.parse(jsonString)
+  } catch (e) {
+    console.error('JSON parse failed after debugging')
+    throw e
+  }
+}
+
 function fillServerTemplateFromStrings(
   localCheckListStr: string,
   serverCheckListStr: string
@@ -156,33 +188,40 @@ function fillServerTemplateFromStrings(
     const localCheckList = JSON.parse(localCheckListStr)
     const serverCheckList = JSON.parse(serverCheckListStr)
 
+    // Создаем карту для быстрого поиска локальных значений по имени поля
+    const localFieldMap = new Map()
+    localCheckList.fields.forEach((field: any) => {
+      localFieldMap.set(field.name, field)
+    })
+
     // Заполняем серверный шаблон
     const filledTemplate = {
       title: serverCheckList.title,
-      fields: serverCheckList.fields.map((field: { name: string }) => {
-        const localValue = localCheckList.values[field.name]
-        if (localValue) {
+      fields: serverCheckList.fields.map((serverField: any) => {
+        const localField = localFieldMap.get(serverField.name)
+
+        if (localField) {
           return {
-            ...field,
-            status: localValue.status,
-            comment: localValue.comment
+            ...serverField, // сохраняем все свойства серверного поля
+            status: localField.status || null,
+            comment: localField.comment || ''
           }
         }
-        return field
+
+        // Если локального поля нет, возвращаем серверное поле без изменений
+        return serverField
       })
     }
 
-    // Возвращаем результат в виде строки
-    // return JSON.stringify(filledTemplate, null, 2);
     return JSON.stringify(filledTemplate)
   } catch (error) {
     console.error('Ошибка при парсинге JSON или заполнении шаблона:', error)
-    // Можно вернуть пустой JSON или ошибку в строке, в зависимости от требований
     return serverCheckListStr
   }
 }
 
 const finalcheckListTemplate = ref('')
+
 const tryToGetLocalCecklist = async () => {
   try {
     const serverCheckList = props.product.checkList?.checkListTemplate!
