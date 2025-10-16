@@ -209,7 +209,7 @@ const baseFolder = `Системы ТАУ - Общее/Фото ТАУ конт�
 
 const qrurl = ref('')
 const createQR = async (item: SerialNumberData) => {
-  errorStore.addInfo('не закрывайте QR пока фотографии не будут загружены')
+  errorStore.addInfo('не закрывайте QR пока фотограeфии не будут загружены')
   watcherYandex.value = createYandexDiskWatcher({
     token: '', // OAuth токен
     path: baseFolder, // папка для отслеживания
