@@ -211,7 +211,7 @@ const qrurl = ref('')
 const createQR = async (item: SerialNumberData) => {
   errorStore.addInfo('не закрывайте QR пока фотографии не будут загружены')
   watcherYandex.value = createYandexDiskWatcher({
-    token: 'y0__xCzv6qkqveAAhiE-Tkg5JKEohRMzx8UgKzBxwhK0dcYxPQ-v_tAJA', // OAuth токен
+    token: '', // OAuth токен
     path: baseFolder, // папка для отслеживания
     intervalSec: 2,
     autoDownload: true, // автоматически скачивать файлы
