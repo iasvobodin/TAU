@@ -9,6 +9,12 @@
         <v-expansion-panel-text>
           <v-row>
             <v-col>
+              <v-btn @click="checkActiveUser">Проверка активных пользователей</v-btn><br />
+              <v-btn @click="stopProcess">Закрыть все активные приложения</v-btn><br />
+              <v-btn @click="startAuth">открыть авторизацию</v-btn><br />
+              <v-btn @click="checkAuth">проверить авторизацию</v-btn><br />
+              <v-btn @click="refreshToken">обновить токен</v-btn>
+
               <v-container v-if="clientsData">
                 <v-card elevation="2" class="pa-4">
                   <v-card-title>Клиенты (Всего: {{ clientsData.count }})</v-card-title>
@@ -22,9 +28,9 @@
                     <template v-slot:item.lastActive="{ item }">
                       {{ formatDate(item.lastActive) }}
                     </template>
-                    <template v-slot:item.pid="{ item }">
+                    <!-- <template v-slot:item.pid="{ item }">
                       {{ item.pid }}
-                    </template>
+                    </template> -->
                   </v-data-table>
                 </v-card>
               </v-container>
@@ -41,14 +47,26 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { getClients } from '@/api/userServices'
 import type { ClientsResponse } from '@/assets/interfaces'
-
+import { useWebSocketStore } from '@/stores/websockets'
+import {
+  app,
+  os,
+  storage,
+  filesystem,
+  server,
+  events,
+  window as neuWindow
+} from '@neutralinojs/lib'
+import { useUserStore } from '@/stores/user'
+import { startAuth, refreshToken } from '@/assets/utils/authYandex'
 const clientsData = ref<ClientsResponse | null>(null)
+const wsStore = useWebSocketStore()
 
 // Заголовки таблицы
 const headers = [
   { title: 'ID Клиента', key: 'clientId' },
-  { title: 'Последняя активность', key: 'lastActive' },
-  { title: 'id процесса', key: 'pid' }
+  { title: 'Последняя активность', key: 'lastActive' }
+  // { title: 'id процесса', key: 'pid' }
 ]
 
 // Форматирование даты
@@ -62,6 +80,29 @@ const formatDate = (dateString: string) => {
     minute: '2-digit',
     second: '2-digit'
   })
+}
+const checkActiveUser = () => {
+  wsStore.send({
+    command: 'checkActiveUser'
+  })
+}
+
+const stopProcess = () => {
+  wsStore.send({
+    command: 'stopProcess'
+  })
+}
+const userStore = useUserStore()
+
+async function checkAuth() {
+  const access_token = await storage.getData('access_token')
+  const res = await fetch('https://login.yandex.ru/info', {
+    headers: {
+      Authorization: `Bearer ${access_token}`
+    }
+  })
+  const profile = await res.json()
+  console.log('Профиль:', profile)
 }
 
 // Функция для загрузки данных

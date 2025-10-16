@@ -33,7 +33,14 @@ async function buildApp(options: AppOptions = {}) {
     enableTracing: options.enableTracing ?? false, // false по умолчанию
   });
 
-  await fastify.register(websocketPlugin);
+  // await fastify.register(websocketPlugin);
+
+  await fastify.register(websocketPlugin, {
+    options: {
+      clientTracking: true,
+    },
+  });
+
   await fastify.register(cors, {
     origin: "*",
     methods: ["POST", "GET", "PUT", "DELETE"],

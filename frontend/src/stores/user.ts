@@ -14,6 +14,7 @@ const buildDate = getCurrentFormattedDate(__BUILD_DATE__)
 export const useUserStore = defineStore('user', {
   state: () => ({
     userName: '', // логин из ОС
+    userENV: '',
     userExist: true, // существует ли пользователь в БД
     userFullName: '', // ФИО из БД
     isLoadingUser: false // 👈 добавили
@@ -30,6 +31,11 @@ export const useUserStore = defineStore('user', {
     }
   },
   actions: {
+    async getUserENV() {
+      const user = await os.getEnv('USERNAME')
+      const comp = await os.getEnv('COMPUTERNAME')
+      this.userENV = `${user}_${comp}`
+    },
     async getUserName() {
       this.isLoadingUser = true
       try {

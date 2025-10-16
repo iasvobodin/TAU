@@ -4,7 +4,14 @@ import type { Specification } from '@/assets/interfaces'
 import { fetchSpecifications } from '@/api/specificationServices'
 import CheckListView from './CheckListView.vue'
 import DefectsView from './DefectsView.vue'
-import { server, filesystem, os, events, window as neuWindow } from '@neutralinojs/lib'
+import {
+  server,
+  filesystem,
+  os,
+  events,
+  window as neuWindow,
+  type DirectoryEntry
+} from '@neutralinojs/lib'
 import { onMounted, shallowRef, ref, watch } from 'vue'
 import SettingsView from './SettingsView.vue'
 import AdminLog from '../AdminLog.vue'
@@ -139,7 +146,7 @@ onMounted(async () => {
   // await getSpecification()
 })
 
-const files = ref<filesystem.DirectoryEntry[]>([])
+const files = ref<DirectoryEntry[]>([])
 const pdfData = ref<ArrayBuffer>()
 
 const serverMount = async () => {

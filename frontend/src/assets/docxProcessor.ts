@@ -193,6 +193,7 @@ import { filesystem, os, server, events, resources } from '@neutralinojs/lib'
 import type { DirectoryEntry } from '@neutralinojs/lib'
 import { mountServer } from '@/assets/utils/mountServer'
 import { findFileInDirectory } from '@/assets/utils/findFileInDirectory'
+import { getCurrentMonthYear } from './utils/getCurrentMonthYear'
 // Конфигурация
 const CONFIG = {
   scriptName: 'convert.ps1',
@@ -201,13 +202,6 @@ const CONFIG = {
   passportDir: '//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Паспорта',
   searchKey: 'плата 2'
 } as const
-
-function getCurrentMonthYear(): string {
-  const now = new Date()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const year = now.getFullYear()
-  return `${month}.${year}`
-}
 
 function normalizePath(path: string): string {
   return path.replace(/^\/\//, '\\\\').replace(/\//g, '\\')

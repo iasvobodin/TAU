@@ -40,14 +40,14 @@ export default function operatorRoutes(app: FastifyInstance) {
     }
   );
 
-  app.put<{ Params: { id: number }; Body: Prisma.UserUpdateInput }>(
-    "/operators/:id",
+  app.put<{ Params: { Login: string }; Body: Prisma.UserUpdateInput }>(
+    "/users/:Login",
     async (request, reply) => {
       try {
-        const { id } = request.params;
+        const { Login } = request.params as { Login: string };
         const data = request.body;
         const operator = await app.prisma.user.update({
-          where: { id },
+          where: { Login },
           data,
         });
         reply.send(operator);
@@ -57,7 +57,7 @@ export default function operatorRoutes(app: FastifyInstance) {
     }
   );
 
-  app.delete("/operators/:id", async (request, reply) => {
+  app.delete("/users/:id", async (request, reply) => {
     try {
       const { id } = request.params as { id: number };
       await app.prisma.user.delete({

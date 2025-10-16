@@ -20,9 +20,11 @@ datasource db {
 }
 
 model User {
-  id    Int    @id @default(autoincrement())
-  Login String @unique
-  Name  String
+  id            Int     @id @default(autoincrement())
+  Login         String  @unique
+  Name          String
+  access_token  String?
+  refresh_token String?
 }
 
 model Component {

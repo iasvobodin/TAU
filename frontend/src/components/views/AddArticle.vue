@@ -8,6 +8,9 @@ import { createDocWithBarcodes } from '@/assets/barcodeGenerator'
 import type { ModulesType, SerialNumberData } from '@/assets/interfaces'
 import { server, filesystem, os, events, window as neuWindow } from '@neutralinojs/lib'
 import { generateQr } from '@/assets/generateQR'
+import { getCurrentMonthYear } from '@/assets/utils/getCurrentMonthYear'
+import { createYandexDiskWatcher } from '@/assets/yandexWatcher'
+
 const props = defineProps({
   invoice: {
     type: String,
@@ -22,6 +25,8 @@ const props = defineProps({
   //   required: true
   // }
 })
+const watcherYandex = ref<ReturnType<typeof createYandexDiskWatcher> | null>(null)
+
 const QRDialog = ref(false)
 const errorStore = useErrorStore()
 const emit = defineEmits<{
@@ -57,6 +62,11 @@ watch(dialog, (val) => {
 })
 watch(dialogDelete, (val) => {
   if (!val) closeDialogDelete()
+})
+watch(QRDialog, (val) => {
+  if (!val){
+    errorStore.clearInfo()
+    watcherYandex.value?.stop()}
 })
 
 const closeDialog = () => {
@@ -194,8 +204,44 @@ const openFile = async () => {
     `explorer "\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\Операционные карты\\ОК МП-ТАУ-001-24 Входной контроль.pdf"`
   )
 }
+const folder = getCurrentMonthYear()
+const baseFolder = `Системы ТАУ - Общее/Фото ТАУ контроль/${folder}`
+
 const qrurl = ref('')
 const createQR = async (item: SerialNumberData) => {
+  errorStore.addInfo('не закрывайте QR пока фотографии не будут загружены')
+  watcherYandex.value = createYandexDiskWatcher({
+    token: 'y0__xCzv6qkqveAAhiE-Tkg5JKEohRMzx8UgKzBxwhK0dcYxPQ-v_tAJA', // OAuth токен
+    path: baseFolder, // папка для отслеживания
+    intervalSec: 2,
+    autoDownload: true, // автоматически скачивать файлы
+    localDir: './uploads', // локальная папка
+    onChange: async (newFiles) => {
+      newFiles.forEach((f) => {
+        // гарантируем, что photos — это массив
+        console.log('from onChange');
+        
+        if (!Array.isArray(item.photos)) {
+          item.photos = []
+        }
+
+        if (!item.photos.includes(f.name)) {
+          item.photos.push(f.name)
+          serialNumberStore.updateSerialNumber(item.name, { photos: item.photos })
+        }
+      })
+
+      errorStore.addInfo(`добавлен файл ${newFiles.map((f) => f.name)}`)
+      console.log(
+        '🔥 Появились новые файлы:',
+        newFiles.map((f) => f.name)
+      )
+    },
+    onError: (err) => {
+      console.error('Ошибка в watcher:', err)
+    }
+  })
+
   qrurl.value = await generateQr(item)
   QRDialog.value = true
 }

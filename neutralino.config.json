@@ -27,7 +27,9 @@
     "debug.log",
     "storage.*"
   ],
-  "globalVariables": {},
+  "globalVariables": {
+    "CLIENT_ID": "e6e17b4cbbb6476d940403b2b1057da2"
+  },
   "modes": {
     "window": {
       "title": "TAU",
@@ -73,8 +75,8 @@
   "cli": {
     "binaryName": "TAU",
     "resourcesPath": "/frontend/dist/",
-    "binaryVersion": "6.1.0",
-    "clientVersion": "6.1.0",
+    "binaryVersion": "6.3.0",
+    "clientVersion": "6.3.0",
     "frontendLibrary": {
       "projectPath": "/frontend/",
       "initCommand": "npm install",

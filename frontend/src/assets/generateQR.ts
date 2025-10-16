@@ -1,43 +1,21 @@
-// // generateQr.ts
-// import bwipjs from 'bwip-js'
-// import type { SerialNumberData } from '@/assets/interfaces'
-// import QRCodeStyling from 'qr-code-styling'
-
-// export const generateQr = async (item: SerialNumberData): Promise<string> => {
-//   const canvas = document.createElement('canvas')
-
-//   // Формируем URL с параметрами folder и subfolder
-//   const baseUrl = 'https://iasvobodin.github.io/tau-yandex-oauth-test/'
-//   const url = `${baseUrl}?folder=${encodeURIComponent(item.invoice!)}&subfolder=${encodeURIComponent(item.name)}`
-
-//   try {
-//     bwipjs.toCanvas(canvas, {
-//       bcid: 'qrcode',
-//       text: url,
-//       scale: 3,
-//       includetext: false
-//     })
-//     return canvas.toDataURL('image/png')
-//   } catch (error) {
-//     throw new Error(`Failed to generate QR code: ${error}`)
-//   }
-// }
-
 import type { SerialNumberData } from '@/assets/interfaces'
 import QRCodeStyling from 'qr-code-styling'
 import tau from './././../../public/ТАУ.svg'
+import { getCurrentMonthYear } from './utils/getCurrentMonthYear'
+
 export const generateQr = async (item: SerialNumberData): Promise<string> => {
-  const baseUrl = 'https://iasvobodin.github.io/tau-yandex-oauth-test/'
-  const url = `${baseUrl}?folder=${encodeURIComponent(item.invoice!)}&subfolder=${encodeURIComponent(item.name)}`
+  const baseUrl = 'https://yandex-o-auth.vercel.app/'
+  const url = `${baseUrl}?folder=${encodeURIComponent(getCurrentMonthYear())}&subfolder=${encodeURIComponent(item.name)}`
+  console.log(url, 'url')
 
   const qrCode = new QRCodeStyling({
     width: 400,
     height: 400,
     type: 'canvas',
     data: url,
-    margin: 1,
+    margin: 10,
     image: tau,
-    imageOptions: { saveAsBlob: true, hideBackgroundDots: true, imageSize: 0.7, margin: 10 },
+    imageOptions: { saveAsBlob: true, hideBackgroundDots: true, imageSize: 0.5, margin: 10 },
     dotsOptions: { type: 'classy-rounded', color: '#000000' },
     backgroundOptions: { color: '#ffffff' },
     cornersSquareOptions: { type: 'extra-rounded', color: '#000000' },

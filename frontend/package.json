@@ -13,7 +13,7 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
-    "@neutralinojs/lib": "^6.1.0",
+    "@neutralinojs/lib": "^6.3.0",
     "@svgdotjs/svg.js": "^3.2.4",
     "@types/bwip-js": "^3.2.3",
     "@types/file-saver": "^2.0.7",

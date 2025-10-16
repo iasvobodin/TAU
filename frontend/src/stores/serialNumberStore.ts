@@ -23,6 +23,16 @@ export const useSerialNumberStore = defineStore('serialNumberStore', {
       } else {
         this.isDuplicate = true
       }
+    },
+    /** 🔹 Обновить элемент по имени */
+    updateSerialNumber(name: string, updates: Partial<SerialNumberData>) {
+      const index = this.sNumbers.findIndex((item) => item.name === name)
+      if (index !== -1) {
+        this.sNumbers[index] = {
+          ...this.sNumbers[index],
+          ...updates
+        }
+      }
     }
   }
 })

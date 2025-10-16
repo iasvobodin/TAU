@@ -3,7 +3,7 @@ import { buildApp } from "./app";
 import type { AppOptions } from "./app";
 import componentRoutes from "./routes/component";
 import operationRoutes from "./routes/operation";
-import operatorRoutes from "./routes/operator";
+import operatorRoutes from "./routes/user";
 import productRoutes from "./routes/product";
 import productionOperationRoutes from "./routes/productionOperation";
 import specificationRoutes from "./routes/specification";

@@ -6,6 +6,7 @@ export type SerialNumberData = {
   partNumber: string
   invoice?: string
   comment?: string
+  photos?: string[]
   supplier?: string
   _rejected?: boolean
   status?: boolean
@@ -60,7 +61,12 @@ export type ComponentAllPayload = Prisma.ComponentGetPayload<{
     ProductionOperation: true
   }
 }>
-
+export type Token = {
+  access_token: string
+  expires_in: number
+  refresh_token: string
+  token_type: string
+}
 export type Information = {
   'Инв. № изделия'?: string
   SN?: string

@@ -47,6 +47,9 @@ export const useErrorStore = defineStore('error', {
     removeInfo() {
       this.infoMessages.shift()
     },
+    clearInfo() {
+      this.infoMessages = [] as string[]
+    },
     // Метод для временного отключения вывода ошибок
     disableErrorOutput() {
       this.isErrorDisabled = true

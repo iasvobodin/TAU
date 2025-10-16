@@ -22,7 +22,10 @@ const prepareDataToSend = (data: SerialNumberData[]) => {
       supplier: e.supplier!,
       invoice: e.invoice!,
       status: e.status ? 'on_hold' : 'accepted',
-      comment: e.comment ? e.comment : '{}',
+      comment:
+        e.comment || (e.photos && e.photos.length)
+          ? JSON.stringify({ comment: e.comment ?? '', photos: e.photos ?? [] })
+          : '{}',
       user: useUserStore().userFullName
     }
   })

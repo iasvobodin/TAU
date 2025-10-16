@@ -75,6 +75,22 @@ onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
   wsStore.initNeutralinoEvents()
   mountServer('./.tmp')
+
+  window.addEventListener('online', () => {
+    console.log('Доступ в Интернет есть.')
+  })
+
+  window.addEventListener('offline', () => {
+    console.log('Нет доступа в Интернет.')
+  })
+
+  fetch('https://www.yandex.ru/favicon.ico')
+    .then(() => {
+      console.log('Доступ в Интернет есть (файл загружен).')
+    })
+    .catch(() => {
+      console.log('Нет доступа в Интернет (файл не загружен).')
+    })
 })
 
 onUnmounted(() => {

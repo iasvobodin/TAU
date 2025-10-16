@@ -18,3 +18,16 @@ neutralino.js
 .storage
 *.log
 shared
+uploads
+/.env.*
+/server/.env*
+frontend/.env.development
+frontend/.env.production
+server/.env.development
+server/.env.production
+frontend/public/ph.html
+frontend/public/photographer_landing.html
+frontend/public/photography_tailwind.html
+frontend/public/remixed-717562b1.html
+frontend/public/sv.html
+server/server.exe

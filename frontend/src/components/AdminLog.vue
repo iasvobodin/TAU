@@ -28,29 +28,47 @@ import { useCounterStore } from '@/stores/counter'
 
 const counterStore = useCounterStore()
 
-//   const logs = ref<string[]>([])
-
 function formatLog(log: any) {
-  if (!log) return ''
-  const time = new Date(log.time).toLocaleTimeString()
-  return `[${time}] ${log.hostname} - ${log.msg}  - ${JSON.stringify(log.req) ? `method : ${log.req.method} url : ${log.req.url} ` : JSON.stringify(log.res)}`
+  // Проверяем тип данных. Если это строка, возвращаем её напрямую.
+  if (typeof log === 'string') {
+    return log
+  }
+
+  // Если это не объект, возвращаем сообщение об ошибке.
+  if (!log || typeof log !== 'object') {
+    return 'Неизвестный формат лога'
+  }
+
+  // Теперь мы уверены, что log — это объект, и можем безопасно получать свойства.
+  const time = log.time ? new Date(log.time).toLocaleTimeString() : 'N/A'
+  const hostname = log.hostname || 'N/A'
+  const message = log.msg || 'Сообщение отсутствует'
+
+  let requestInfo = ''
+  // Проверяем наличие req и res
+  if (log.req) {
+    requestInfo = `(метод: ${log.req.method}, URL: ${log.req.url})`
+  } else if (log.res) {
+    requestInfo = `(статус: ${log.res.statusCode})`
+  }
+
+  return `[${time}] ${hostname} - ${message} ${requestInfo}`
 }
 
 onMounted(() => {
-  // events.on('serverLog', (event) => {
-  //   // event.detail — объект с ключом detail, в котором лежит строка
-  //   const logStr = event.detail.detail // <- вот эта строка
-  //   // console.log('👀 Получен лог:', logStr)
-  //   // Теперь парсим лог и добавляем в массив
-  //   try {
-  //     const logObj = JSON.parse(logStr)
-  //     // counterStore.logs.push(logObj);
-  //     counterStore.addLogs(logObj)
-  //   } catch {
-  //     // counterStore.logs.push('⚠️ Невалидный лог');
-  //     counterStore.addLogs('⚠️ Невалидный лог')
-  //   }
-  // })
+  events.on('serverLog', (event) => {
+    // event.detail — объект с ключом detail, в котором лежит строка
+    const logStr = event.detail.detail
+    console.log('👀 Получен лог:', logStr)
+    // Теперь парсим лог и добавляем в массив
+    try {
+      const logObj = JSON.parse(logStr)
+      counterStore.addLogs(logObj)
+    } catch {
+      // Здесь мы добавляем строку, если парсинг не удался
+      counterStore.addLogs('⚠️ Невалидный лог. Возможно, сервер отправил не JSON.')
+    }
+  })
 })
 </script>
 

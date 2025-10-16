@@ -26,17 +26,13 @@ export const createUser = async (
   return post<Prisma.UserCreateInput>(`${API_URL}/users`, user)
 }
 
-export const updateUser = async (id: number, user: Partial<User>): Promise<ApiResponse<User>> => {
-  return put<User>(`https://api.example.com/users/${id}`, user)
-}
-
-export const partialUpdateUser = async (
-  id: number,
-  user: Partial<User>
+export const updateUser = async (
+  Login: string,
+  data: Prisma.UserUncheckedUpdateInput
 ): Promise<ApiResponse<User>> => {
-  return patch<User>(`https://api.example.com/users/${id}`, user)
+  return put<User>(`${API_URL}/users/${Login}`, data)
 }
 
 export const deleteUser = async (id: number): Promise<ApiResponse<null>> => {
-  return del<null>(`https://api.example.com/users/${id}`)
+  return del<null>(`${API_URL}/users${id}`)
 }
