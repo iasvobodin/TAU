@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useCounterStore } from '@/stores/counter'
-
+import LabelPrintMulty from '../LabelPrintMulty.vue'
 const counterStore = useCounterStore()
 </script>
 
@@ -15,4 +15,5 @@ const counterStore = useCounterStore()
     </v-row>
     <hr />
   </v-container>
+  <LabelPrintMulty />
 </template>

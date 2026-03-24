@@ -1,0 +1,104 @@
+<!-- === STYLES === -->
+<style>
+    :root {
+        --label-width: 30mm;
+        --label-height: 15mm;
+
+        --code-size: 8mm;
+
+        --font-main: 8px;
+        --font-small: 7px;
+
+        --padding: 1mm;
+        --gap: 1mm;
+    }
+
+    @media print {
+        @page {
+            size: var(--label-width) var(--label-height);
+            margin: 0;
+        }
+
+        body {
+            margin: 0;
+        }
+    }
+
+    body {
+        overflow: hidden;
+        display: flex;
+        justify-content: center;
+        margin: 0;
+        font-family: Arial, sans-serif;
+    }
+
+    .page {
+        width: var(--label-width);
+        height: var(--label-height);
+        page-break-after: always;
+    }
+
+    .label {
+        width: 100%;
+        height: 100%;
+        box-sizing: border-box;
+        padding: var(--padding);
+
+        display: grid;
+        grid-template-columns: var(--code-size) 1fr;
+        grid-template-rows: var(--code-size) 1fr;
+        gap: var(--gap);
+    }
+
+    .code {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .code img {
+        width: var(--code-size);
+        height: var(--code-size);
+    }
+
+    .top-text {
+        grid-column: 2;
+        grid-row: 1;
+        font-family: "Arial Narrow", Arial, sans-serif;
+        line-height: 1;
+        font-size: var(--font-main);
+        overflow: hidden;
+        word-break: break-word;
+    }
+
+    .bottom-text {
+        grid-column: 1 / span 2;
+        grid-row: 2;
+        font-family: "Arial Narrow", Arial, sans-serif;
+        line-height: 1;
+        font-size: var(--font-small);
+        overflow: hidden;
+        word-break: break-word;
+    }
+</style>
+
+<!-- === TEMPLATE === -->
+<template id="label-template">
+    <div class="page">
+        <div class="label">
+
+            <div class="code">
+                <img src="${barcode}" />
+            </div>
+
+            <div class="top-text">
+                <div>${serial}</div>
+                <div>${partNumber}</div>
+            </div>
+
+            <div class="bottom-text">
+                ${description} ${manufacturer}
+            </div>
+
+        </div>
+    </div>
+</template>
