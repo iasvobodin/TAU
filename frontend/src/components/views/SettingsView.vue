@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useCounterStore } from '@/stores/counter'
 import LabelPrintMulty from '../LabelPrintMulty.vue'
+import PrintPassports from '../printPassports.vue'
+import LabelEditor from '../LabelEditor.vue'
 const counterStore = useCounterStore()
 </script>
 
@@ -16,4 +18,12 @@ const counterStore = useCounterStore()
     <hr />
   </v-container>
   <LabelPrintMulty />
+  <PrintPassports />
+  <v-container>
+    <v-row>
+      <v-col align-self="center">
+        <LabelEditor />
+      </v-col>
+    </v-row>
+  </v-container>
 </template>
