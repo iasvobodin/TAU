@@ -1,11 +1,61 @@
 <script setup lang="ts">
+/**
+ * LabelCanvas — канвас-адаптер для vue-draggable-resizable.
+ * Единственный файл который знает про библиотеку и конвертирует мм ↔ px.
+ *
+ * Контракт со store:
+ *   Читает:  positions (мм), elements, selectedId, labelSizeInPx, zoom, gridStep, labelSizeMM
+ *   Пишет:   store.updatePosition(id, ElementPosition в мм), store.selectedId, store.removeElement
+ */
+import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { GridLayout as GridLayoutComponent, GridItem } from 'vue3-grid-layout'
+import VueDraggableResizable from 'vue-draggable-resizable'
+import 'vue-draggable-resizable/style.css'
 import { useLabelEditorStore } from '@/stores/labelEditor'
+import type { ElementPosition } from '@/types/label'
 
 const store = useLabelEditorStore()
-const { layout, elements, selectedId, labelSizeInPx, labelSize, zoom, gridConfig, gridCols } =
+const { positions, elements, selectedId, labelSizeInPx, labelSizeMM, zoom, gridStep } =
   storeToRefs(store)
+
+// ── мм ↔ px ──────────────────────────────────────────────────────────────────
+const MM_TO_PX = 3.78
+function mmToPx(mm: number): number {
+  return mm * MM_TO_PX * zoom.value
+}
+function pxToMm(px: number): number {
+  return px / (MM_TO_PX * zoom.value)
+}
+
+// Шаг snap-сетки в px
+const snapPx = computed(() => Math.max(1, Math.round(mmToPx(gridStep.value))))
+
+// px-позиция для библиотеки, вычисляется из мм
+function posToPx(pos: ElementPosition) {
+  return {
+    x: Math.round(mmToPx(pos.x)),
+    y: Math.round(mmToPx(pos.y)),
+    w: Math.max(1, Math.round(mmToPx(pos.w))),
+    h: Math.max(1, Math.round(mmToPx(pos.h)))
+  }
+}
+
+// ── Ключ для принудительного перемонтирования при смене зума ─────────────────
+// vue-draggable-resizable кэширует размер родителя при mount.
+// При изменении zoom родитель меняет px-размер → нужно перемонтировать
+// чтобы библиотека пересчитала границы.
+// Позиции восстанавливаются из мм → px корректно.
+
+// ── Обработчики событий библиотеки ───────────────────────────────────────────
+function onDragStop(id: string, xPx: number, yPx: number): void {
+  const pos = positions.value[id]
+  if (!pos) return
+  store.updatePosition(id, { x: pxToMm(xPx), y: pxToMm(yPx), w: pos.w, h: pos.h })
+}
+
+function onResizeStop(id: string, xPx: number, yPx: number, wPx: number, hPx: number): void {
+  store.updatePosition(id, { x: pxToMm(xPx), y: pxToMm(yPx), w: pxToMm(wPx), h: pxToMm(hPx) })
+}
 </script>
 
 <template>
@@ -19,99 +69,89 @@ const { layout, elements, selectedId, labelSizeInPx, labelSize, zoom, gridConfig
       align-items: center;
       justify-content: center;
       padding: 20px;
+      overflow: auto;
+      min-height: 0;
     "
   >
     <div
-      class="label-canvas"
       :style="{
+        position: 'relative',
         width: labelSizeInPx.width + 'px',
         height: labelSizeInPx.height + 'px',
+        flexShrink: 0,
         backgroundColor: '#fff',
         border: '1px solid #c0c0c0',
         borderRadius: '4px',
-        position: 'relative',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-        transition: 'all 0.2s ease'
+        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
       }"
+      @click.self="selectedId = null"
     >
-      <GridLayoutComponent
-        v-model:layout="layout"
-        :col-num="gridCols"
-        :row-height="gridConfig.rowHeight"
-        :is-draggable="true"
-        :is-resizable="true"
-        :vertical-compact="false"
-        :use-css-transforms="false"
-        :margin="[0, 0]"
-        style="height: 100%; width: 100%"
-        @item-resized="store.onItemResized"
-        @item-moved="store.onItemMoved"
-      >
-        <GridItem
-          v-for="item in layout"
-          :key="item.i"
-          v-bind="item"
-          @click.stop="selectedId = item.i"
+      <!-- :key включает zoom — при смене масштаба компонент ремонтируется
+           и vue-draggable-resizable перечитывает px-размер родителя -->
+      <template v-for="(pos, id) in positions" :key="String(id)">
+        <VueDraggableResizable
+          v-if="elements[id]"
+          :key="`${String(id)}-${zoom}`"
+          :x="posToPx(pos).x"
+          :y="posToPx(pos).y"
+          :w="posToPx(pos).w"
+          :h="posToPx(pos).h"
+          :parent="true"
+          :grid="[snapPx, snapPx]"
+          :min-width="snapPx"
+          :min-height="snapPx"
+          :active="selectedId === String(id)"
+          :prevent-deactivation="true"
+          class="label-element"
+          :class="{ 'label-element--selected': selectedId === String(id) }"
+          @activated="selectedId = String(id)"
+          @drag-stop="(x: number, y: number) => onDragStop(String(id), x, y)"
+          @resize-stop="
+            (x: number, y: number, w: number, h: number) => onResizeStop(String(id), x, y, w, h)
+          "
+          @dblclick="store.removeElement(String(id))"
         >
+          <!-- TEXT -->
           <div
-            class="grid-item"
-            :class="{ 'grid-item-selected': selectedId === item.i }"
-            @dblclick="store.removeElement(item.i)"
+            v-if="elements[id]?.type === 'text'"
+            class="element-content"
+            :style="{
+              fontSize: (elements[id]?.props.fontSize ?? 12) * zoom + 'px',
+              lineHeight: 1.2,
+              fontWeight: elements[id]?.props.bold ? 'bold' : 'normal',
+              textAlign: elements[id]?.props.align
+            }"
           >
-            <!-- TEXT -->
-            <div
-              v-if="elements[item.i]?.type === 'text'"
-              class="element-content"
-              :style="{
-                fontSize: (elements[item.i]?.props.fontSize ?? 12) * zoom + 'px',
-                lineHeight: 1.2,
-                fontWeight: elements[item.i]?.props.bold ? 'bold' : 'normal',
-                textAlign: elements[item.i]?.props.align
-              }"
-            >
-              <div style="width: 100%; height: 100%; display: flex; align-items: center">
-                {{ store.getDisplayText(elements[item.i]!) }}
-              </div>
-            </div>
+            {{ store.getDisplayText(elements[id]!) }}
+          </div>
 
-            <!-- BARCODE -->
-            <div v-else-if="elements[item.i]?.type === 'barcode'" class="element-content">
-              <div style="text-align: center">
-                <img
-                  v-if="elements[item.i]?.props.customText"
-                  :src="elements[item.i]!.props.customText as string"
-                  style="max-width: 100%; max-height: 100%; object-fit: contain"
-                  alt="barcode"
-                />
-              </div>
-            </div>
+          <!-- BARCODE -->
+          <div v-else-if="elements[id]?.type === 'barcode'" class="element-content">
+            <img
+              v-if="elements[id]?.props.customText"
+              :src="elements[id]!.props.customText as string"
+              style="max-width: 100%; max-height: 100%; object-fit: contain"
+              alt="barcode"
+            />
+          </div>
 
-            <!-- IMAGE -->
-            <div v-else-if="elements[item.i]?.type === 'image'" class="element-content">
-              <div
-                v-if="elements[item.i]?.props.src"
-                style="
-                  width: 100%;
-                  height: 100%;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                "
-              >
-                <img
-                  :src="elements[item.i]!.props.src"
-                  style="max-width: 100%; max-height: 100%; object-fit: contain"
-                  alt="image"
-                />
-              </div>
-              <div v-else style="color: #999; text-align: center">🖼️<br />Изображение</div>
+          <!-- IMAGE -->
+          <div v-else-if="elements[id]?.type === 'image'" class="element-content">
+            <img
+              v-if="elements[id]?.props.src"
+              :src="elements[id]!.props.src"
+              style="max-width: 100%; max-height: 100%; object-fit: contain"
+              alt="image"
+            />
+            <div v-else style="color: #999; text-align: center; font-size: 12px">
+              🖼️<br />Изображение
             </div>
           </div>
-        </GridItem>
-      </GridLayoutComponent>
+        </VueDraggableResizable>
+      </template>
 
       <div class="size-info">
-        {{ labelSize.width }} × {{ labelSize.height }} {{ labelSize.unit }}
+        {{ labelSizeMM.width.toFixed(0) }} × {{ labelSizeMM.height.toFixed(0) }} мм
       </div>
       <div v-if="zoom !== 1" class="zoom-badge">🔍 {{ Math.round(zoom * 100) }}%</div>
     </div>
@@ -119,74 +159,63 @@ const { layout, elements, selectedId, labelSizeInPx, labelSize, zoom, gridConfig
 </template>
 
 <style scoped>
-.grid-item {
+.label-element {
   border: 1px solid #ddd;
   background: white;
-  height: 100%;
-  width: 100%;
-  cursor: pointer;
-  transition: all 0.15s;
-  overflow: auto;
   border-radius: 2px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    box-shadow 0.15s;
 }
-
-.grid-item:hover {
+.label-element:hover {
   border-color: #1976d2;
   background: #f8f9ff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
-
-.grid-item-selected {
-  border: 2px solid #1976d2;
-  background: #e3f2fd;
-  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2);
+.label-element--selected {
+  border: 2px solid #1976d2 !important;
+  background: #e3f2fd !important;
+  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2) !important;
 }
-
 .element-content {
-  padding: 4px;
-  height: 100%;
   width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 4px;
   word-break: break-word;
-  overflow: auto;
-  position: relative;
+  overflow: hidden;
+  pointer-events: none;
 }
-
 .size-info {
   position: absolute;
   bottom: 4px;
   right: 8px;
   font-size: 10px;
   color: #666;
+  font-family: monospace;
   background: rgba(255, 255, 255, 0.95);
   padding: 2px 6px;
   border-radius: 4px;
   pointer-events: none;
-  font-family: monospace;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
-
 .zoom-badge {
   position: absolute;
   top: 4px;
   right: 8px;
   font-size: 10px;
   color: #1976d2;
+  font-weight: bold;
   background: rgba(255, 255, 255, 0.95);
   padding: 2px 6px;
   border-radius: 4px;
   pointer-events: none;
-  font-weight: bold;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
-
-.label-canvas {
-  position: relative;
-  transition: all 0.2s ease;
-}
-
 .canvas-container {
   background-image:
     linear-gradient(45deg, #ccc 25%, transparent 25%),

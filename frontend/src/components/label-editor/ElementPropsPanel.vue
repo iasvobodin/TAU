@@ -15,19 +15,35 @@ function onTextInput(value: string) {
 <template>
   <div>
     <div v-if="selectedElement">
-      <h3 style="margin-bottom: 12px; font-size: 14px; font-weight: 600; color: #666">
-        Настройки:
-        {{
-          selectedElement.type === 'text'
-            ? 'Текст'
-            : selectedElement.type === 'barcode'
-              ? 'Штрихкод'
-              : 'Изображение'
-        }}
-        <span style="font-size: 12px; color: #999; margin-left: 8px">
-          (ID: {{ selectedElement.dataField }})
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px">
+        <v-icon size="14" color="primary">
+          {{
+            selectedElement.type === 'text'
+              ? 'mdi-format-text'
+              : selectedElement.type === 'barcode'
+                ? 'mdi-barcode'
+                : 'mdi-image'
+          }}
+        </v-icon>
+        <span style="font-size: 13px; font-weight: 600; color: #444">
+          {{
+            selectedElement.type === 'text'
+              ? 'Текст'
+              : selectedElement.type === 'barcode'
+                ? 'Штрихкод'
+                : 'Изображение'
+          }}
         </span>
-      </h3>
+        <span style="font-size: 11px; color: #aaa">{{ selectedElement.dataField }}</span>
+        <v-btn
+          icon="mdi-delete-outline"
+          size="x-small"
+          variant="text"
+          color="error"
+          style="margin-left: auto"
+          @click="store.removeElement(selectedId!)"
+        />
+      </div>
 
       <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: center">
         <!-- Text settings -->
@@ -63,7 +79,7 @@ function onTextInput(value: string) {
             <div style="font-size: 12px; margin-bottom: 4px; color: #666">Текст:</div>
             <v-textarea
               :model-value="store.getDisplayText(selectedElement)"
-              rows="3"
+              rows="2"
               density="compact"
               hide-details
               auto-grow
@@ -157,8 +173,9 @@ function onTextInput(value: string) {
       </div>
     </div>
 
-    <div v-else style="color: #999; font-size: 12px; text-align: center">
-      Нажмите на элемент, чтобы настроить его свойства
+    <div v-else style="color: #bbb; font-size: 12px; text-align: center; padding: 24px 0">
+      <v-icon size="32" color="#ddd">mdi-cursor-default-click-outline</v-icon>
+      <div style="margin-top: 6px">Выберите элемент на макете</div>
     </div>
   </div>
 </template>

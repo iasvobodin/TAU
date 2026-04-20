@@ -5,11 +5,11 @@ import { os, filesystem } from '@neutralinojs/lib'
 import { LabelPrinterMulty } from '@/assets/printLabelMultyСopy'
 import type {
   ElementType,
+  ElementPosition,
   DataField,
   FieldCounters,
   LabelElement,
   LabelSize,
-  LayoutItem,
   TemplateData
 } from '@/types/label'
 
@@ -17,12 +17,13 @@ const MM_TO_PX = 3.78
 
 export const useLabelEditorStore = defineStore('labelEditor', () => {
   // ===== State =====
-  const layout = ref<LayoutItem[]>([])
+  const positions = ref<Record<string, ElementPosition>>({})
   const elements = ref<Record<string, LabelElement>>({})
   const selectedId = ref<string | null>(null)
-  const labelSize = ref<LabelSize>({ width: 100, height: 60, unit: 'mm' })
-  const zoom = ref<number>(1)
-  const gridStep = ref<number>(1) // шаг сетки в мм
+  const labelSize = ref<LabelSize>({ width: 30, height: 20, unit: 'mm' })
+  const zoom = ref<number>(6)
+  // gridStep — UI-предпочтение, не сохраняется в шаблон
+  const gridStep = ref<number>(1)
 
   const fieldCounters = ref<FieldCounters>({
     serial: 0,
@@ -32,54 +33,40 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     custom: 0
   })
 
-  // Групповая печать: общие данные (dataField → значение) и серийники
   const batchCommonData = ref<Record<string, string>>({})
   const batchSerialsText = ref('261200001-01\n261200002-01\n261200003-01')
   const batchPrintEnabled = ref(false)
-
-  // Последний использованный путь — для удобного defaultPath в диалогах
   const lastSavedPath = ref<string>('')
 
   // ===== Computed =====
-  const labelSizeInPx = computed(() => {
-    const w =
-      labelSize.value.unit === 'mm' ? labelSize.value.width * MM_TO_PX : labelSize.value.width
-    const h =
-      labelSize.value.unit === 'mm' ? labelSize.value.height * MM_TO_PX : labelSize.value.height
-    return { width: w * zoom.value, height: h * zoom.value }
-  })
 
-  const realSizeInPx = computed(() => {
+  // Размер этикетки в мм (всегда)
+  const labelSizeMM = computed(() => {
     if (labelSize.value.unit === 'mm') {
-      return {
-        width: labelSize.value.width * MM_TO_PX,
-        height: labelSize.value.height * MM_TO_PX
-      }
+      return { width: labelSize.value.width, height: labelSize.value.height }
     }
-    return { width: labelSize.value.width, height: labelSize.value.height }
+    return {
+      width: labelSize.value.width / MM_TO_PX,
+      height: labelSize.value.height / MM_TO_PX
+    }
   })
 
-  // Количество колонок/строк = размер в мм / шаг
-  // Для px-этикеток переводим в мм через MM_TO_PX
-  const gridCols = computed(() => {
-    const widthMM =
-      labelSize.value.unit === 'mm' ? labelSize.value.width : labelSize.value.width / MM_TO_PX
-    return Math.max(1, Math.round(widthMM / gridStep.value))
-  })
-
-  const gridRows = computed(() => {
-    const heightMM =
-      labelSize.value.unit === 'mm' ? labelSize.value.height : labelSize.value.height / MM_TO_PX
-    return Math.max(1, Math.round(heightMM / gridStep.value))
-  })
-
-  const gridConfig = computed(() => ({
-    rowHeight: labelSizeInPx.value.height / gridRows.value,
-    colNum: gridCols.value
+  // Размер этикетки в px с учётом зума — нужен только для канваса
+  const labelSizeInPx = computed(() => ({
+    width: labelSizeMM.value.width * MM_TO_PX * zoom.value,
+    height: labelSizeMM.value.height * MM_TO_PX * zoom.value
   }))
 
-  // Текстовые поля шаблона (не серийники) — для формы групповой печати
-  // Каждый элемент уникален по dataField
+  // Реальный размер в px без зума (для отображения в панели)
+  const realSizeInPx = computed(() => ({
+    width: labelSizeMM.value.width * MM_TO_PX,
+    height: labelSizeMM.value.height * MM_TO_PX
+  }))
+
+  const selectedElement = computed(() =>
+    selectedId.value ? (elements.value[selectedId.value] ?? null) : null
+  )
+
   const templateTextFields = computed(() => {
     const seen = new Set<string>()
     return Object.values(elements.value)
@@ -92,45 +79,46 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
       .map((el) => ({ dataField: el.dataField, label: getFieldDisplayName(el.dataField) }))
   })
 
-  // Есть ли в шаблоне серийник (текст или штрихкод)
   const hasSerialInTemplate = computed(() =>
     Object.values(elements.value).some((el) => el.dataField.startsWith('serial'))
-  )
-
-  // Синхронизируем batchCommonData при изменении элементов шаблона:
-  // добавляем новые поля, убираем удалённые
-  watch(
-    templateTextFields,
-    (fields) => {
-      const currentKeys = new Set(fields.map((f) => f.dataField))
-      // Удаляем поля которых больше нет в шаблоне
-      for (const key of Object.keys(batchCommonData.value)) {
-        if (!currentKeys.has(key)) delete batchCommonData.value[key]
-      }
-      // Добавляем новые поля с пустым значением
-      for (const { dataField } of fields) {
-        if (!(dataField in batchCommonData.value)) {
-          batchCommonData.value[dataField] = ''
-        }
-      }
-      // Если серийника нет в шаблоне — отключаем групповую печать
-      if (!hasSerialInTemplate.value) {
-        batchPrintEnabled.value = false
-      }
-    },
-    { deep: false }
   )
 
   const serials = computed(() =>
     batchSerialsText.value
       .split(/\r?\n/)
       .map((s) => s.trim())
-      .filter((s) => s.length)
+      .filter(Boolean)
   )
 
-  const selectedElement = computed(() =>
-    selectedId.value ? (elements.value[selectedId.value] ?? null) : null
+  // Синхронизация полей формы групповой печати с шаблоном
+  watch(
+    templateTextFields,
+    (fields) => {
+      const currentKeys = new Set(fields.map((f) => f.dataField))
+      for (const key of Object.keys(batchCommonData.value)) {
+        if (!currentKeys.has(key)) delete batchCommonData.value[key]
+      }
+      for (const { dataField } of fields) {
+        if (!(dataField in batchCommonData.value)) {
+          batchCommonData.value[dataField] = ''
+        }
+      }
+      if (!hasSerialInTemplate.value) batchPrintEnabled.value = false
+    },
+    { deep: false }
   )
+
+  // После изменения размера этикетки — поджимаем все элементы в новые границы
+  watch(labelSizeMM, (newSize, oldSize) => {
+    if (!oldSize) return
+    // Если размер реально изменился
+    if (newSize.width !== oldSize.width || newSize.height !== oldSize.height) {
+      // Пересчитываем и поджимаем все позиции
+      for (const [id, pos] of Object.entries(positions.value)) {
+        positions.value[id] = clampToLabel(pos)
+      }
+    }
+  })
 
   // ===== Helpers =====
   function uid(): string {
@@ -138,8 +126,7 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
   }
 
   function getDefaultText(field?: string): string {
-    const base = field?.split('_')[0]
-    switch (base) {
+    switch (field?.split('_')[0]) {
       case 'serial':
         return 'SN:123456'
       case 'partNumber':
@@ -154,28 +141,20 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
   }
 
   function getDisplayText(element: LabelElement): string {
-    if (element.props.customText !== undefined && element.props.customText !== null) {
-      return element.props.customText as string
-    }
+    if (element.props.customText != null) return element.props.customText as string
     return getDefaultText(element.dataField)
   }
 
   function getFieldDisplayName(dataField: string): string {
     const [base, index] = dataField.split('_')
-    switch (base) {
-      case 'serial':
-        return `Serial ${index}`
-      case 'partNumber':
-        return `Part Number ${index}`
-      case 'description':
-        return `Description ${index}`
-      case 'manufacturer':
-        return `Manufacturer ${index}`
-      case 'custom':
-        return `Custom ${index}`
-      default:
-        return dataField
+    const names: Record<string, string> = {
+      serial: 'Serial',
+      partNumber: 'Part Number',
+      description: 'Description',
+      manufacturer: 'Manufacturer',
+      custom: 'Custom'
     }
+    return `${names[base] ?? base} ${index}`
   }
 
   function generateFieldName(baseField: keyof FieldCounters): DataField {
@@ -183,16 +162,30 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     return `${baseField}_${fieldCounters.value[baseField]}`
   }
 
-  // ===== Barcode Generation =====
+  // ===== Position management =====
+  // Зажимает позицию внутри этикетки (в мм)
+  function clampToLabel(pos: ElementPosition): ElementPosition {
+    const { width, height } = labelSizeMM.value
+    const w = Math.min(pos.w, width)
+    const h = Math.min(pos.h, height)
+    const x = Math.max(0, Math.min(pos.x, width - w))
+    const y = Math.max(0, Math.min(pos.y, height - h))
+    return { x, y, w, h }
+  }
+
+  // Единственный метод обновления позиции — вызывается из канваса
+  // Канвас сам конвертирует px→мм и передаёт сюда готовые мм
+  function updatePosition(id: string, pos: ElementPosition): void {
+    positions.value[id] = clampToLabel(pos)
+  }
+
+  // ===== Barcode =====
   async function generateBarcode(element: LabelElement): Promise<void> {
     if (element.type !== 'barcode') return
-
     const barcodeType = element.props.barcodeType ?? 'code128'
     const barcodeValue = element.props.testValue ?? 'TEST123456'
-
     try {
       let canvas = document.createElement('canvas')
-
       if (barcodeType === 'datamatrix') {
         canvas = await bwipjs.toCanvas(canvas, {
           bcid: 'datamatrix',
@@ -209,33 +202,19 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
           height: element.props.barcodeHeight ?? 6
         })
       }
-
       element.props.customText = canvas.toDataURL('image/png')
-    } catch (error) {
-      console.error('Error generating barcode:', error)
+    } catch (e) {
+      console.error('Barcode generation error:', e)
       element.props.customText = ''
     }
   }
 
   async function updateBarcode(elementId: string): Promise<void> {
-    const element = elements.value[elementId]
-    if (element?.type === 'barcode') {
-      await generateBarcode(element)
-    }
+    const el = elements.value[elementId]
+    if (el?.type === 'barcode') await generateBarcode(el)
   }
 
-  // ===== Element Management =====
-  // Зажимает item в пределах сетки (gridCols × gridRows)
-  function clampToGrid(item: { x: number; y: number; w: number; h: number }) {
-    const cols = gridCols.value
-    const rows = gridRows.value
-    const w = Math.min(item.w, cols)
-    const h = Math.min(item.h, rows)
-    const x = Math.min(item.x, cols - w)
-    const y = Math.min(item.y, rows - h)
-    return { x, y, w, h }
-  }
-
+  // ===== Element management =====
   function addElement(type: ElementType, baseField?: string): void {
     const id = uid()
 
@@ -244,13 +223,15 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
         ? `${baseField ?? 'serial'}_barcode`
         : generateFieldName((baseField ?? 'custom') as keyof FieldCounters)
 
-    const rawItem = {
+    // Дефолтный размер: 1/3 ширины × 1/6 высоты (или крупнее для штрихкода)
+    const { width, height } = labelSizeMM.value
+    const defaultPos: ElementPosition = clampToLabel({
       x: 0,
       y: 0,
-      w: Math.min(4, gridCols.value),
-      h: Math.min(type === 'barcode' ? 4 : 2, gridRows.value)
-    }
-    layout.value.push({ ...clampToGrid(rawItem), i: id })
+      w: Math.round(width / 3),
+      h: Math.round(height / (type === 'barcode' ? 4 : 6))
+    })
+    positions.value[id] = defaultPos
 
     const baseFontSize = Math.max(
       8,
@@ -266,7 +247,7 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
           fontSize: baseFontSize,
           align: 'left',
           bold: false,
-          fontFamily: 'Arial',
+          fontFamily: 'Arial Narrow',
           customText: getDefaultText(baseField)
         }),
         ...(type === 'barcode' && {
@@ -276,60 +257,33 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
           barcodeScale: 10,
           testValue: 'TEST123456'
         }),
-        ...(type === 'image' && {
-          src: '',
-          imageWidth: 100,
-          imageHeight: 'auto'
-        })
+        ...(type === 'image' && { src: '', imageWidth: 100, imageHeight: 'auto' })
       }
     }
+    console.log(elements.value)
 
-    if (type === 'barcode') {
-      generateBarcode(elements.value[id])
-    }
-
+    if (type === 'barcode') generateBarcode(elements.value[id])
     selectedId.value = id
   }
 
-  // Вызывается из LabelCanvas через @item-resized — зажимаем в grid
-  function onItemResized(id: string, h: number, w: number, _hpx: number, _wpx: number): void {
-    const item = layout.value.find((l) => l.i === id)
-    if (!item) return
-    const clamped = clampToGrid({ x: item.x, y: item.y, w, h })
-    item.w = clamped.w
-    item.h = clamped.h
-    // Если позиция вышла за пределы — тоже корректируем
-    item.x = clamped.x
-    item.y = clamped.y
-  }
-
-  // Вызывается из LabelCanvas через @item-moved
-  function onItemMoved(id: string, newY: number, newX: number): void {
-    const item = layout.value.find((l) => l.i === id)
-    if (!item) return
-    const clamped = clampToGrid({ x: newX, y: newY, w: item.w, h: item.h })
-    item.x = clamped.x
-    item.y = clamped.y
-  }
-
   function removeElement(id: string): void {
-    layout.value = layout.value.filter((l) => l.i !== id)
+    delete positions.value[id]
     delete elements.value[id]
     if (selectedId.value === id) selectedId.value = null
   }
 
-  // ===== Size / Zoom =====
+  // ===== Label size =====
   function validateSize(): void {
-    if (labelSize.value.width < 10) labelSize.value.width = 10
-    if (labelSize.value.height < 10) labelSize.value.height = 10
-    if (labelSize.value.width > 500) labelSize.value.width = 500
-    if (labelSize.value.height > 500) labelSize.value.height = 500
+    if (labelSize.value.width < 1) labelSize.value.width = 1
+    if (labelSize.value.height < 1) labelSize.value.height = 1
+    if (labelSize.value.width > 110) labelSize.value.width = 110
+    if (labelSize.value.height > 110) labelSize.value.height = 110
   }
 
-  // ===== Template helpers =====
+  // ===== Template =====
   function buildTemplateData(): TemplateData {
     return {
-      layout: layout.value,
+      positions: { ...positions.value },
       elements: Object.fromEntries(
         Object.entries(elements.value).map(([id, el]) => [
           id,
@@ -359,24 +313,33 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
           }
         ])
       ),
-      labelSize: labelSize.value,
-      gridCols: gridCols.value,
-      gridRows: gridRows.value,
-      gridStep: gridStep.value
+      labelSize: labelSize.value
     }
   }
 
   async function applyTemplateData(parsed: any): Promise<void> {
-    layout.value = (parsed.layout ?? []).map((l: any) => ({
-      x: l.x ?? 0,
-      y: l.y ?? 0,
-      w: l.w ?? 4,
-      h: l.h ?? 2,
-      i: l.i
-    }))
+    if (parsed.labelSize) labelSize.value = parsed.labelSize
+
+    // ── Позиции: новый формат (positions) или старый (layout + gridCols/gridRows) ──
+    if (parsed.positions) {
+      positions.value = parsed.positions
+    } else if (parsed.layout) {
+      // Миграция старого формата: grid-ячейки → мм
+      const cols = parsed.gridCols ?? 12
+      const rows = parsed.gridRows ?? 12
+      const { width, height } = labelSizeMM.value
+      positions.value = {}
+      for (const item of parsed.layout) {
+        positions.value[item.i] = clampToLabel({
+          x: (item.x / cols) * width,
+          y: (item.y / rows) * height,
+          w: (item.w / cols) * width,
+          h: (item.h / rows) * height
+        })
+      }
+    }
 
     elements.value = {}
-
     for (const [id, raw] of Object.entries(parsed.elements ?? {})) {
       const el = raw as any
       elements.value[id] = {
@@ -385,129 +348,85 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
         dataField: el.dataField,
         props: {
           ...el.props,
-          ...(el.type === 'text' && {
-            customText: getDefaultText(el.dataField)
-          }),
-          ...(el.type === 'barcode' && {
-            testValue: 'TEST123456',
-            customText: null
-          })
+          ...(el.type === 'text' && { customText: getDefaultText(el.dataField) }),
+          ...(el.type === 'barcode' && { testValue: 'TEST123456', customText: null })
         }
       }
-
-      if (el.type === 'barcode') {
-        await generateBarcode(elements.value[id])
-      }
-    }
-
-    if (parsed.labelSize) {
-      labelSize.value = parsed.labelSize
-    }
-    if (parsed.gridStep != null) {
-      gridStep.value = parsed.gridStep
+      if (el.type === 'barcode') await generateBarcode(elements.value[id])
     }
 
     selectedId.value = null
   }
 
   function resetCounters(): void {
-    fieldCounters.value = {
-      serial: 0,
-      partNumber: 0,
-      description: 0,
-      manufacturer: 0,
-      custom: 0
-    }
+    fieldCounters.value = { serial: 0, partNumber: 0, description: 0, manufacturer: 0, custom: 0 }
   }
 
   // ===== Persistence =====
-  // ===== Persistence (Neutralino native dialogs) =====
-
-  // Сохранить в текущий файл (если уже сохраняли) или открыть диалог
   async function saveTemplate(): Promise<void> {
-    if (lastSavedPath.value) {
-      await _writeToPath(lastSavedPath.value)
-    } else {
-      await saveTemplateAs()
-    }
+    if (lastSavedPath.value) await _writeToPath(lastSavedPath.value)
+    else await saveTemplateAs()
   }
 
-  // Всегда открывает диалог «Сохранить как»
   async function saveTemplateAs(): Promise<void> {
     try {
-      const defaultPath = lastSavedPath.value || 'label-template.json'
       const path = await os.showSaveDialog('Сохранить шаблон', {
-        defaultPath,
+        defaultPath: lastSavedPath.value || 'label-template.json',
         filters: [{ name: 'JSON шаблон', extensions: ['json'] }]
       })
       if (!path) return
       await _writeToPath(path.endsWith('.json') ? path : path + '.json')
-    } catch (error) {
-      console.error('Error saving template:', error)
+    } catch (e) {
+      console.error(e)
       alert('Ошибка при сохранении шаблона')
     }
   }
 
   async function _writeToPath(path: string): Promise<void> {
-    const json = JSON.stringify(buildTemplateData(), null, 2)
-    await filesystem.writeFile(path, json)
+    await filesystem.writeFile(path, JSON.stringify(buildTemplateData(), null, 2))
     lastSavedPath.value = path
-    const name = path.split(/[\/]/).pop()
-    alert(`Шаблон сохранён: ${name}`)
+    alert(`Шаблон сохранён: ${path.split(/[/\\]/).pop()}`)
   }
 
-  // Открыть шаблон через нативный диалог
   async function openTemplate(): Promise<void> {
     try {
-      const defaultPath = lastSavedPath.value ? lastSavedPath.value.replace(/[^\/]+$/, '') : ''
+      const defaultPath = lastSavedPath.value ? lastSavedPath.value.replace(/[^/\\]+$/, '') : ''
       const entries = await os.showOpenDialog('Открыть шаблон', {
         ...(defaultPath ? { defaultPath } : {}),
         filters: [{ name: 'JSON шаблон', extensions: ['json'] }]
       })
       if (!entries?.length) return
       const path = entries[0]
-      const text = await filesystem.readFile(path)
-      await applyTemplateData(JSON.parse(text))
+      await applyTemplateData(JSON.parse(await filesystem.readFile(path)))
       lastSavedPath.value = path
-      const name = path.split(/[\/]/).pop()
-      alert(`Шаблон загружён: ${name}`)
-    } catch (error) {
-      console.error('Error opening template:', error)
+      alert(`Шаблон загружён: ${path.split(/[/\\]/).pop()}`)
+    } catch (e) {
+      console.error(e)
       alert('Ошибка при открытии шаблона')
     }
   }
 
   function clearTemplate(): void {
     if (!confirm('Очистить все элементы?')) return
-    layout.value = []
+    positions.value = {}
     elements.value = {}
     selectedId.value = null
     resetCounters()
   }
 
   // ===== Print =====
-
-  // Собирает { items, common } из текущего состояния элементов редактора.
-  // Контракт: ключи в common — полные dataField (description_1, partNumber_1 и т.д.),
-  // серийник берётся из testValue штрихкода или текстового поля serial_*.
   function buildSinglePrintData(): { items: { serial: string }[]; common: Record<string, string> } {
     const common: Record<string, string> = {}
     let serial = ''
-
     for (const el of Object.values(elements.value)) {
       if (el.type === 'text') {
         common[el.dataField] = el.props.customText ?? getDefaultText(el.dataField)
-        // Если это serial-текст — дублируем как serial для принтера
-        if (el.dataField.startsWith('serial')) {
-          serial = common[el.dataField]
-        }
+        if (el.dataField.startsWith('serial')) serial = common[el.dataField]
       } else if (el.type === 'barcode' && el.dataField.includes('serial')) {
         serial = el.props.testValue ?? ''
       }
     }
-
     if (serial) common['serial'] = serial
-
     return { items: [{ serial }], common }
   }
 
@@ -516,12 +435,10 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
 
     if (!batchPrintEnabled.value) {
       const { items, common } = buildSinglePrintData()
-      const templateData = buildTemplateData()
-      await printer.printFromTemplate(items, common, templateData)
+      await printer.printFromTemplate(items, common, buildTemplateData())
       return
     }
 
-    // Групповая печать
     if (!serials.value.length) {
       alert('Нет серийных номеров для печати')
       return
@@ -533,50 +450,55 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
       delete el.props.testValue
     })
 
-    // common содержит все поля по dataField — принтер резолвит по dataField первым делом
-    const common = { ...batchCommonData.value }
-    const items = serials.value.map((s) => ({ serial: s }))
-
-    await printer.printFromTemplate(items, common as any, templateData)
+    await printer.printFromTemplate(
+      serials.value.map((s) => ({ serial: s })),
+      { ...batchCommonData.value } as any,
+      templateData
+    )
   }
 
   return {
     // State
-    layout,
+    positions,
     elements,
     selectedId,
     labelSize,
     zoom,
+    gridStep,
     batchCommonData,
     batchSerialsText,
     batchPrintEnabled,
-    templateTextFields,
-    hasSerialInTemplate,
+    lastSavedPath,
 
     // Computed
-    gridCols,
-    gridRows,
-    gridStep,
+    labelSizeMM,
     labelSizeInPx,
     realSizeInPx,
-    gridConfig,
-    serials,
     selectedElement,
+    templateTextFields,
+    hasSerialInTemplate,
+    serials,
 
-    // Actions
+    // Actions — position
+    updatePosition,
+
+    // Actions — elements
     addElement,
     removeElement,
-    onItemResized,
-    onItemMoved,
     updateBarcode,
+
+    // Actions — editor
     validateSize,
     getDisplayText,
     getFieldDisplayName,
-    lastSavedPath,
+
+    // Actions — template
     saveTemplate,
     saveTemplateAs,
     openTemplate,
     clearTemplate,
+
+    // Actions — print
     printLabels
   }
 })

@@ -1,15 +1,16 @@
 export type ElementType = 'text' | 'barcode' | 'image'
 export type BarcodeType = 'code128' | 'datamatrix'
-export type DataField = string // e.g. 'serial_1', 'partNumber_1', 'serial_barcode', etc.
+export type DataField = string
 export type Unit = 'mm' | 'px'
 
-export interface LayoutItem {
-  x: number
-  y: number
-  w: number
-  h: number
-  i: string
-  moved?: boolean
+// ─── Абстрактная позиция элемента в мм ───────────────────────────────────────
+// Единственный формат позиции во всём приложении.
+// Канвас-компонент конвертирует мм↔px сам, store и принтер про px не знают.
+export interface ElementPosition {
+  x: number // мм от левого края этикетки
+  y: number // мм от верхнего края
+  w: number // ширина в мм
+  h: number // высота в мм
 }
 
 export interface LabelElementProps {
@@ -31,7 +32,7 @@ export interface LabelElementProps {
   imageWidth?: number
   imageHeight?: string
 
-  // Editor-only visual state
+  // Editor-only visual state (не сохраняется в шаблон)
   customText?: string | null
 }
 
@@ -56,32 +57,27 @@ export interface FieldCounters {
   custom: number
 }
 
+// ─── Формат шаблона (сохраняется в JSON) ─────────────────────────────────────
+type SavedElementProps = Omit<LabelElementProps, 'customText' | 'testValue'>
+
 export interface TemplateData {
-  layout: LayoutItem[]
-  elements: Record<
-    string,
-    Omit<LabelElement, 'props'> & { props: Omit<LabelElementProps, 'customText' | 'testValue'> }
-  >
+  positions: Record<string, ElementPosition>
+  elements: Record<string, Omit<LabelElement, 'props'> & { props: SavedElementProps }>
   labelSize: LabelSize
-  gridCols?: number // сохраняем в шаблоне для точного воспроизведения в принтере
-  gridRows?: number
-  gridStep?: number // шаг в мм (0.5 | 1 | 2 ...)
 }
 
-// Используется принтером — props без editor-only полей
+// ─── Формат для принтера ──────────────────────────────────────────────────────
 export interface PrintLabelElement {
   id: string
   type: ElementType
   dataField: DataField
-  props: Omit<LabelElementProps, 'customText' | 'testValue'>
+  props: SavedElementProps
 }
 
 export interface PrintTemplateData {
-  layout: LayoutItem[]
+  positions: Record<string, ElementPosition>
   elements: Record<string, PrintLabelElement>
   labelSize: LabelSize
-  gridCols?: number
-  gridRows?: number
 }
 
 export interface CommonData {
