@@ -1,58 +1,116 @@
 <script setup lang="ts">
 import { useLabelEditorStore } from '@/stores/labelEditor'
-
 import LabelSizePanel from './label-editor/LabelSizePanel.vue'
 import AddElementPanel from './label-editor/AddElementPanel.vue'
 import ElementPropsPanel from './label-editor/ElementPropsPanel.vue'
 import LabelCanvas from './label-editor/LabelCanvas.vue'
 import PrintDataPanel from './label-editor/PrintDataPanel.vue'
-import SVGeditor from './label-editor/SVGeditor.vue'
 
 const store = useLabelEditorStore()
 </script>
 
 <template>
-  <div
-    style="
-      height: fit-content;
-      display: flex;
-      flex-direction: column;
-      padding: 16px;
-      background: #f5f5f5;
-    "
-  >
-    <!-- TOP PANEL -->
+  <!--
+    Двухколоночный layout:
+      Левая колонка — фиксированная ширина, все панели управления, скролл внутри
+      Правая колонка — канвас занимает всё оставшееся пространство
+
+    Такой подход полностью исключает сдвиг канваса при раскрытии/закрытии
+    панели настроек выбранного элемента.
+  -->
+  <div style="display: flex; height: 100vh; overflow: hidden; background: #f5f5f5; gap: 0">
+    <!-- ── Левая панель (фиксированная ширина) ── -->
     <div
       style="
+        width: 340px;
+        min-width: 340px;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border-right: 1px solid #e0e0e0;
         background: white;
-        border-radius: 8px;
-        padding: 16px;
-        margin-bottom: 16px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        overflow-y: auto;
-        /* max-height: 60%; */
       "
     >
-      <LabelSizePanel />
+      <!-- Верхняя часть — настройки и добавление элементов, скроллится -->
+      <div style="flex: 1; overflow-y: auto; padding: 12px">
+        <LabelSizePanel />
 
-      <v-divider />
+        <v-divider class="my-3" />
 
-      <div style="margin: 16px 0">
         <AddElementPanel />
+
+        <v-divider class="my-3" />
+
+        <!-- Действия с шаблоном -->
+        <div style="display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end">
+          <v-btn size="x-small" color="error" variant="text" @click="store.clearTemplate">
+            Очистить
+          </v-btn>
+          <v-btn
+            size="x-small"
+            color="secondary"
+            variant="outlined"
+            prepend-icon="mdi-folder-open-outline"
+            @click="store.openTemplate"
+          >
+            Открыть
+          </v-btn>
+          <v-btn
+            size="x-small"
+            color="primary"
+            variant="outlined"
+            prepend-icon="mdi-content-save-outline"
+            @click="store.saveTemplate"
+          >
+            Сохранить
+          </v-btn>
+          <v-btn
+            size="x-small"
+            color="primary"
+            variant="tonal"
+            prepend-icon="mdi-content-save-edit-outline"
+            @click="store.saveTemplateAs"
+          >
+            Сохранить как…
+          </v-btn>
+        </div>
       </div>
 
-      <v-divider />
-
-      <div style="margin-top: 16px">
+      <!-- Нижняя часть — настройки выбранного элемента.
+           Фиксированная высота, не влияет на положение канваса. -->
+      <div
+        style="
+          border-top: 2px solid #e8e8e8;
+          background: #fafafa;
+          min-height: 160px;
+          max-height: 300px;
+          overflow-y: auto;
+          padding: 12px;
+          flex-shrink: 0;
+        "
+      >
         <ElementPropsPanel />
       </div>
+    </div>
 
-      <!-- CANVAS -->
-      <LabelCanvas />
+    <!-- ── Правая часть — канвас + печать ── -->
+    <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0">
+      <!-- Канвас занимает всё доступное пространство -->
+      <div style="flex: 1; overflow: auto; min-height: 0">
+        <LabelCanvas />
+      </div>
 
-      <!-- PRINT DATA + ALL ACTIONS -->
-      <div style="margin-top: 16px">
-        <v-divider class="my-2" />
+      <!-- Панель печати — фиксированная снизу -->
+      <div
+        style="
+          border-top: 1px solid #e0e0e0;
+          background: white;
+          padding: 12px 16px;
+          overflow-y: auto;
+          max-height: 320px;
+          flex-shrink: 0;
+        "
+      >
         <PrintDataPanel />
       </div>
     </div>
@@ -61,18 +119,18 @@ const store = useLabelEditorStore()
 
 <style>
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: #f1f1f1;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 4px;
+  background: #bbb;
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: #888;
 }
 </style>

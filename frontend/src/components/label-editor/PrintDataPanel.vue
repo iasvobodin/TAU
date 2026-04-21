@@ -8,6 +8,7 @@ const {
   batchCommonData,
   batchSerialsText,
   batchPrintEnabled,
+  svgRenderEnabled,
   templateTextFields,
   hasSerialInTemplate,
   lastSavedPath,
@@ -142,6 +143,28 @@ function toggleBatch(val: boolean | null) {
       </v-btn>
 
       <v-divider vertical style="margin: 0 4px" />
+
+      <v-tooltip
+        location="top"
+        :text="
+          svgRenderEnabled
+            ? 'SVG: текст и штрихкоды как векторные пути'
+            : 'HTML: стандартный рендер'
+        "
+      >
+        <template #activator="{ props: tp }">
+          <v-btn
+            v-bind="tp"
+            size="small"
+            :color="svgRenderEnabled ? 'deep-purple' : 'grey'"
+            :variant="svgRenderEnabled ? 'tonal' : 'text'"
+            icon
+            @click="svgRenderEnabled = !svgRenderEnabled"
+          >
+            <v-icon size="16">mdi-vector-curve</v-icon>
+          </v-btn>
+        </template>
+      </v-tooltip>
 
       <v-btn size="small" color="success" prepend-icon="mdi-printer" @click="store.printLabels">
         {{ batchPrintEnabled ? `Печать (${serials.length} шт.)` : 'Печать' }}

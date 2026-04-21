@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import bwipjs from 'bwip-js'
 import { os, filesystem } from '@neutralinojs/lib'
 import { LabelPrinterMulty } from '@/assets/printLabelMultyСopy'
+import { getAvailableFonts, type FontInfo } from '@/assets/renderToSVG'
 import type {
   ElementType,
   ElementPosition,
@@ -20,8 +21,8 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
   const positions = ref<Record<string, ElementPosition>>({})
   const elements = ref<Record<string, LabelElement>>({})
   const selectedId = ref<string | null>(null)
-  const labelSize = ref<LabelSize>({ width: 30, height: 20, unit: 'mm' })
-  const zoom = ref<number>(6)
+  const labelSize = ref<LabelSize>({ width: 100, height: 60, unit: 'mm' })
+  const zoom = ref<number>(1)
   // gridStep — UI-предпочтение, не сохраняется в шаблон
   const gridStep = ref<number>(1)
 
@@ -36,7 +37,16 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
   const batchCommonData = ref<Record<string, string>>({})
   const batchSerialsText = ref('261200001-01\n261200002-01\n261200003-01')
   const batchPrintEnabled = ref(false)
+  const svgRenderEnabled = ref(false) // SVG-рендерер вместо HTML
   const lastSavedPath = ref<string>('')
+  const availableFonts = ref<FontInfo[]>([{ label: 'Arial', value: 'Arial' }])
+  const fontsLoading = ref(true)
+
+  // Загружаем шрифты при старте (параллельно — быстро)
+  getAvailableFonts().then((fonts) => {
+    if (fonts.length) availableFonts.value = fonts
+    fontsLoading.value = false
+  })
 
   // ===== Computed =====
 
@@ -107,18 +117,6 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     },
     { deep: false }
   )
-
-  // После изменения размера этикетки — поджимаем все элементы в новые границы
-  watch(labelSizeMM, (newSize, oldSize) => {
-    if (!oldSize) return
-    // Если размер реально изменился
-    if (newSize.width !== oldSize.width || newSize.height !== oldSize.height) {
-      // Пересчитываем и поджимаем все позиции
-      for (const [id, pos] of Object.entries(positions.value)) {
-        positions.value[id] = clampToLabel(pos)
-      }
-    }
-  })
 
   // ===== Helpers =====
   function uid(): string {
@@ -247,7 +245,7 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
           fontSize: baseFontSize,
           align: 'left',
           bold: false,
-          fontFamily: 'Arial Narrow',
+          fontFamily: 'Arial',
           customText: getDefaultText(baseField)
         }),
         ...(type === 'barcode' && {
@@ -260,7 +258,6 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
         ...(type === 'image' && { src: '', imageWidth: 100, imageHeight: 'auto' })
       }
     }
-    console.log(elements.value)
 
     if (type === 'barcode') generateBarcode(elements.value[id])
     selectedId.value = id
@@ -274,10 +271,10 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
 
   // ===== Label size =====
   function validateSize(): void {
-    if (labelSize.value.width < 1) labelSize.value.width = 1
-    if (labelSize.value.height < 1) labelSize.value.height = 1
-    if (labelSize.value.width > 110) labelSize.value.width = 110
-    if (labelSize.value.height > 110) labelSize.value.height = 110
+    if (labelSize.value.width < 10) labelSize.value.width = 10
+    if (labelSize.value.height < 10) labelSize.value.height = 10
+    if (labelSize.value.width > 500) labelSize.value.width = 500
+    if (labelSize.value.height > 500) labelSize.value.height = 500
   }
 
   // ===== Template =====
@@ -435,7 +432,9 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
 
     if (!batchPrintEnabled.value) {
       const { items, common } = buildSinglePrintData()
-      await printer.printFromTemplate(items, common, buildTemplateData())
+      const td = buildTemplateData()
+      if (svgRenderEnabled.value) await printer.printFromTemplateSVG(items, common, td)
+      else await printer.printFromTemplate(items, common, td)
       return
     }
 
@@ -450,7 +449,10 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
       delete el.props.testValue
     })
 
-    await printer.printFromTemplate(
+    const printFn = svgRenderEnabled.value
+      ? printer.printFromTemplateSVG.bind(printer)
+      : printer.printFromTemplate.bind(printer)
+    await printFn(
       serials.value.map((s) => ({ serial: s })),
       { ...batchCommonData.value } as any,
       templateData
@@ -468,7 +470,10 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     batchCommonData,
     batchSerialsText,
     batchPrintEnabled,
+    svgRenderEnabled,
     lastSavedPath,
+    availableFonts,
+    fontsLoading,
 
     // Computed
     labelSizeMM,

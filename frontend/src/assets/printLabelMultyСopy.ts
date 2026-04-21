@@ -1,5 +1,6 @@
 import { filesystem, window as neuWindow } from '@neutralinojs/lib'
 import bwipjs from 'bwip-js'
+import { renderLabelsToHTML, getFontBase64 } from '@/assets/renderToSVG'
 import type {
   ElementPosition,
   PrintLabelElement,
@@ -118,18 +119,21 @@ export class LabelPrinterMulty {
             : element.props.align === 'right'
               ? 'flex-end'
               : 'flex-start'
-        // ${element.props.fontFamily ?? '"Arial Narrow", Arial, sans-serif'};
+        console.log(
+          `[printHTML] text el id=${id} font="${element.props.fontFamily}" align=${element.props.align} justify=${justifyContent} value="${fieldValue.slice(0, 20)}"`
+        )
+
         elementsHTML += `
           <div style="${wrapStyle}
             font-size:       ${element.props.fontSize ?? 12}px;
-            line-height:     1;
+            line-height:     1.2;
             font-weight:     ${element.props.bold ? 'bold' : 'normal'};
-            font-family:     ${element.props.fontFamily ?? '"Arial Narrow", Arial, sans-serif'};
+            font-family:     "${element.props.fontFamily ?? 'Arial'}";
             text-align:      ${element.props.align ?? 'left'};
             display:         flex;
             align-items:     center;
             justify-content: ${justifyContent};
-            padding:         1px;
+            padding:         4px;
             word-break:      break-word;
           ">${fieldValue || ' '}</div>
         `
@@ -156,24 +160,57 @@ export class LabelPrinterMulty {
           </div>
         `
       } else if (element.type === 'image') {
-        elementsHTML += `
-          <div style="${wrapStyle} display:flex; align-items:center; justify-content:center;">
-            <img src="${element.props.src ?? ''}"
+        const src = element.props.src ?? ''
+        // Если src — сырой SVG-текст, вставляем inline; иначе используем <img>
+        const imageContent = src.trimStart().startsWith('<svg')
+          ? `<div style="max-width:100%;max-height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;">${src}</div>`
+          : `<img src="${src}"
               style="max-width:100%; max-height:100%; object-fit:contain;
                 ${element.props.imageWidth ? `width:${element.props.imageWidth}px;` : ''}
                 ${element.props.imageHeight ? `height:${element.props.imageHeight};` : ''}"
-              alt="image" />
+              alt="image" />`
+        elementsHTML += `
+          <div style="${wrapStyle} display:flex; align-items:center; justify-content:center;">
+            ${imageContent}
           </div>
         `
       }
     }
-    console.log(elementsHTML)
 
     return `
       <div class="page" style="width:${widthPX}px; height:${heightPX}px; position:relative;">
         ${elementsHTML}
       </div>
     `
+  }
+
+  // ── Сбор уникальных шрифтов из шаблона и генерация @font-face блока ────────
+  private async buildFontFaceCSS(templateData: PrintTemplateData): Promise<string> {
+    const families = new Set<string>()
+    for (const el of Object.values(templateData.elements)) {
+      if (el.type === 'text' && el.props.fontFamily) {
+        families.add(el.props.fontFamily)
+      }
+    }
+    console.log('[printHTML] шрифты в шаблоне:', [...families])
+
+    const blocks: string[] = []
+    for (const family of families) {
+      const dataUrl = await getFontBase64(family)
+      console.log(
+        `[printHTML] getFontBase64("${family}"):`,
+        dataUrl ? `OK (${dataUrl.slice(0, 40)}...)` : 'НЕ НАЙДЕН'
+      )
+      if (dataUrl) {
+        blocks.push(
+          `@font-face { font-family: "${family}"; src: url("${dataUrl}"); font-weight: normal; font-style: normal; }`
+        )
+      }
+    }
+    console.log('[printHTML] @font-face блоков сгенерировано:', blocks.length)
+    if (blocks.length)
+      console.log('[printHTML] первый блок (первые 120 символов):', blocks[0].slice(0, 120))
+    return blocks.join('')
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -183,11 +220,14 @@ export class LabelPrinterMulty {
     common: CommonData,
     templateData: PrintTemplateData
   ): Promise<void> {
-    const pagesHtml = await Promise.all(
-      items.map((item) =>
-        this.generateLabelHTML(templateData, { ...common, serial: item.serial }, item.serial)
-      )
-    )
+    const [pagesHtml, fontFaceCSS] = await Promise.all([
+      Promise.all(
+        items.map((item) =>
+          this.generateLabelHTML(templateData, { ...common, serial: item.serial }, item.serial)
+        )
+      ),
+      this.buildFontFaceCSS(templateData)
+    ])
 
     const fullHtml = `
 <!DOCTYPE html>
@@ -196,6 +236,7 @@ export class LabelPrinterMulty {
   <meta charset="UTF-8">
   <title>Print Labels</title>
   <style>
+    ${fontFaceCSS}
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { margin: 0; padding: 0; }
     .page { position: relative; page-break-after: always; overflow: hidden; }
@@ -218,6 +259,28 @@ export class LabelPrinterMulty {
 
     await filesystem.writeBinaryFile(outputPath, out.buffer)
     await neuWindow.create('/.tmp/print-multy.html', this.windowConfig)
+  }
+
+  // SVG-рендерер: весь текст и штрихкоды — path-ы, единственный файл
+  // Использует renderToSVG.ts. Все остальное (позиционирование, данные)
+  // берётся из того же PrintTemplateData что и HTML-рендерер.
+  public async printFromTemplateSVG(
+    items: BatchItem[],
+    common: CommonData,
+    templateData: PrintTemplateData
+  ): Promise<void> {
+    const html = await renderLabelsToHTML(items, common, templateData)
+
+    const outputPath = `${this.basePath}/.tmp/print-svg.html`
+    const encoder = new TextEncoder()
+    const bom = new Uint8Array([0xef, 0xbb, 0xbf])
+    const content = encoder.encode(html)
+    const out = new Uint8Array(bom.length + content.length)
+    out.set(bom, 0)
+    out.set(content, bom.length)
+
+    await filesystem.writeBinaryFile(outputPath, out.buffer)
+    await neuWindow.create('/.tmp/print-svg.html', this.windowConfig)
   }
 
   // Старый метод для обратной совместимости

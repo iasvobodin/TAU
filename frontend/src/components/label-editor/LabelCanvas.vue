@@ -119,7 +119,8 @@ function onResizeStop(id: string, xPx: number, yPx: number, wPx: number, hPx: nu
               fontSize: (elements[id]?.props.fontSize ?? 12) * zoom + 'px',
               lineHeight: 1.2,
               fontWeight: elements[id]?.props.bold ? 'bold' : 'normal',
-              textAlign: elements[id]?.props.align
+              textAlign: elements[id]?.props.align,
+              fontFamily: elements[id]?.props.fontFamily ?? 'Arial'
             }"
           >
             {{ store.getDisplayText(elements[id]!) }}
@@ -137,12 +138,28 @@ function onResizeStop(id: string, xPx: number, yPx: number, wPx: number, hPx: nu
 
           <!-- IMAGE -->
           <div v-else-if="elements[id]?.type === 'image'" class="element-content">
-            <img
-              v-if="elements[id]?.props.src"
-              :src="elements[id]!.props.src"
-              style="max-width: 100%; max-height: 100%; object-fit: contain"
-              alt="image"
-            />
+            <template v-if="elements[id]?.props.src">
+              <!-- Сырой SVG-текст (вставлен вручную) — рендерим inline -->
+              <div
+                v-if="elements[id]!.props.src!.trimStart().startsWith('<svg')"
+                style="
+                  max-width: 100%;
+                  max-height: 100%;
+                  overflow: hidden;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                "
+                v-html="elements[id]!.props.src"
+              />
+              <!-- URL / data URL (файл выбран через диалог) -->
+              <img
+                v-else
+                :src="elements[id]!.props.src"
+                style="max-width: 100%; max-height: 100%; object-fit: contain"
+                alt="image"
+              />
+            </template>
             <div v-else style="color: #999; text-align: center; font-size: 12px">
               🖼️<br />Изображение
             </div>
