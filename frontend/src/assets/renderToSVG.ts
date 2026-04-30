@@ -2,20 +2,19 @@
  * renderToSVG.ts — векторный рендерер этикеток.
  *
  * Что делает:
- *   - Текст → SVG path через opentype.js (шрифты из /frontend/dist/fonts/)
- *   - Штрихкоды → SVG path через bwip-js toSVG (named export)
- *   - Растровые изображения → <image> base64 (единственное исключение)
- *   - SVG-изображения → inline (полностью векторный результат)
+ *   - Текст → SVG path через opentype.js
+ *   - Штрихкоды → SVG path через bwip-js toSVG
+ *   - Растровые изображения → <image> base64
+ *   - SVG-изображения → inline
  *
- * Контракт:
- *   - Принимает PrintTemplateData — тот же объект что и HTML-принтер
- *   - Шрифты лежат рядом с приложением: /frontend/dist/fonts/<Name>.ttf
- *   - Возвращает строку SVG готовую к вставке в HTML или сохранению в файл
+ * Шрифты: путь к файлу берётся из fontManager (singleton).
+ *   fontManager.init() + scan() вызываются в labelEditor при старте.
  */
 
 import opentype from 'opentype.js'
 import bwipjs from 'bwip-js'
 import { filesystem } from '@neutralinojs/lib'
+import { fontManager } from './fontManager'
 import type {
   PrintTemplateData,
   PrintLabelElement,
@@ -27,254 +26,156 @@ import type {
 
 const MM_TO_PX = 3.78
 
-// Папка со шрифтами приложения (fallback)
-export const FONTS_DIR = `${window.NL_PATH}/.tmp/fonts`
-
-// Системные папки шрифтов по платформам
-const SYSTEM_DIRS = [
-  'C:/Windows/Fonts',
-  '/Library/Fonts',
-  '/System/Library/Fonts',
-  '/usr/share/fonts'
-]
+// Папка встроенных шрифтов приложения (fallback если fontManager не нашёл)
+const APP_FONTS_DIR = `${window.NL_PATH}/.tmp/fonts`
 
 // ─── Типы ────────────────────────────────────────────────────────────────────
 
 /**
  * Элемент списка шрифтов для UI.
- * label обновляется лениво после загрузки бинарника.
+ * value === fullName из fontManager → хранится в props.fontFamily.
+ * svgPreviewPath — web URL SVG-превью, сгенерированного fontManager.
  */
 export interface FontItem {
-  label: string // отображаемое имя: сначала имя файла, затем реальное из таблиц
-  value: string // ключ для fontPathIndex (имя файла без расширения)
-  loaded?: boolean // true = FontFace зарегистрирован, превью работает
+  label: string // отображаемое имя
+  value: string // fullName — хранится в props.fontFamily
+  svgPreviewPath: string // '/.tmp/previews/arial_ttf.svg' или ''
 }
 
 // Обратная совместимость — labelEditor.ts импортирует FontInfo
 export type FontInfo = FontItem
 
-// ─── Индексы (заполняются один раз при initFontIndex) ────────────────────────
+// ─── Кэши ────────────────────────────────────────────────────────────────────
 
-// fileBase.toLowerCase() → абсолютный путь
-const fontPathIndex = new Map<string, string>()
-// fileBase.toLowerCase() → зарегистрирован ли FontFace
+// fullName.toLowerCase() → зарегистрирован ли FontFace в браузере
 const loadedFonts = new Set<string>()
-// fileBase.toLowerCase() → кэш opentype.Font для SVG-рендерера
+// fullName.toLowerCase() → opentype.Font (для SVG-рендерера)
 const fontCache = new Map<string, opentype.Font | null>()
-// fileBase.toLowerCase() → бинарник шрифта (для base64 в HTML-принтере)
+// fullName.toLowerCase() → бинарник шрифта (для getFontBase64)
 const fontBufCache = new Map<string, ArrayBuffer>()
 
+// ─── Внутренний хелпер: загрузка бинарника ────────────────────────────────────
+
 /**
- * Возвращает base64 data URL шрифта для встраивания в @font-face HTML-принтера.
- * Читает из кэша если уже загружен, иначе читает с диска.
+ * Возвращает бинарник шрифта и путь к файлу.
+ * Порядок поиска:
+ *   1. кэш fontBufCache
+ *   2. fontManager.getPathByFullName()
+ *   3. APP_FONTS_DIR/<family>.ttf (fallback для встроенных шрифтов)
  */
-export async function getFontBase64(family: string): Promise<string | null> {
-  const key = family.toLowerCase()
-  let buf = fontBufCache.get(key)
-  if (!buf) {
-    const path = fontPathIndex.get(key)
-    if (!path) return null
-    try {
-      buf = await filesystem.readBinaryFile(path)
-      fontBufCache.set(key, buf)
-    } catch {
-      return null
-    }
+async function readFontBuffer(
+  fullName: string
+): Promise<{ buf: ArrayBuffer; path: string } | null> {
+  const key = fullName.toLowerCase()
+
+  // 1. Кэш
+  const cached = fontBufCache.get(key)
+  if (cached) {
+    const path = fontManager.getPathByFullName(fullName) ?? `${APP_FONTS_DIR}/${fullName}.ttf`
+    return { buf: cached, path }
   }
-  const b64 = btoa(Array.from(new Uint8Array(buf), (b) => String.fromCharCode(b)).join(''))
-  const ext = (fontPathIndex.get(key) ?? '').split('.').pop()?.toLowerCase()
-  const mime = ext === 'otf' ? 'font/otf' : 'font/truetype'
-  return `data:${mime};base64,${b64}`
-}
 
-// ─── Вспомогательные функции ──────────────────────────────────────────────────
+  // 2. fontManager
+  let path = fontManager.getPathByFullName(fullName)
 
-/**
- * Извлекает полное название шрифта (Family + Subfamily).
- * Сохраняет начертание (Narrow, Condensed, …), но отбрасывает "Regular".
- */
-function getFriendlyName(buf: ArrayBuffer, fallback: string): string {
-  try {
-    const font = opentype.parse(buf)
-    const names = font.names as any
-    const family = names.preferredFamily?.en || names.fontFamily?.en || ''
-    const subfamily = names.preferredSubfamily?.en || names.fontSubfamily?.en || ''
-    if (family && subfamily && subfamily !== 'Regular') {
-      return `${family} ${subfamily}`.trim()
+  // 3. Fallback — встроенные шрифты приложения
+  if (!path) {
+    for (const ext of ['ttf', 'otf']) {
+      const fallback = `${APP_FONTS_DIR}/${fullName}.${ext}`
+      try {
+        const buf = await filesystem.readBinaryFile(fallback)
+        fontBufCache.set(key, buf)
+        return { buf, path: fallback }
+      } catch {
+        /* пробуем следующий */
+      }
     }
-    return family || fallback
+    console.warn(`[renderToSVG] шрифт не найден: "${fullName}"`)
+    return null
+  }
+
+  try {
+    const buf = await filesystem.readBinaryFile(path)
+    fontBufCache.set(key, buf)
+    return { buf, path }
   } catch {
-    return fallback
+    console.warn(`[renderToSVG] не удалось прочитать файл шрифта: ${path}`)
+    return null
   }
 }
 
 // ─── Публичное API ────────────────────────────────────────────────────────────
 
 /**
- * Быстрое построение индекса: только обход директорий, без чтения бинарников.
- * Возвращает список FontItem с label = имя файла (уточняется лениво в ensureFontFace).
- * Вызывается один раз при старте приложения.
+ * Возвращает base64 data URL шрифта для @font-face в HTML-принтере.
  */
-export async function getAvailableFonts(): Promise<FontItem[]> {
-  const dirs = [...SYSTEM_DIRS, FONTS_DIR]
-  const items: FontItem[] = []
+export async function getFontBase64(family: string): Promise<string | null> {
+  const result = await readFontBuffer(family)
+  if (!result) return null
 
-  for (const dir of dirs) {
-    try {
-      const entries = await filesystem.readDirectory(dir)
-      for (const e of entries as any[]) {
-        if (e.type !== 'FILE' || !/\.(ttf|otf)$/i.test(e.entry)) continue
-        const fileBase = e.entry.replace(/\.(ttf|otf)$/i, '')
-        const key = fileBase.toLowerCase()
-        if (fontPathIndex.has(key)) continue // дубликат из другой папки
-        fontPathIndex.set(key, `${dir}/${e.entry}`)
-        items.push({ label: fileBase, value: fileBase, loaded: false })
-      }
-    } catch {
-      // папка недоступна на этой платформе — пропускаем
-    }
-  }
-
-  return items.sort((a, b) => a.label.localeCompare(b.label))
+  const { buf, path } = result
+  const ext = path.split('.').pop()?.toLowerCase()
+  const mime = ext === 'otf' ? 'font/otf' : 'font/truetype'
+  const b64 = btoa(Array.from(new Uint8Array(buf), (b) => String.fromCharCode(b)).join(''))
+  return `data:${mime};base64,${b64}`
 }
 
 /**
- * Ленивая загрузка шрифта: читает бинарник, уточняет label, регистрирует FontFace.
- * Вызывается из UI когда элемент списка становится видимым (IntersectionObserver)
- * или при выборе шрифта пользователем.
- * item — опционально: если передан, обновляет label и loaded на месте (реактивно).
+ * Загружает шрифт и регистрирует через FontFace API + <style> инжект.
+ * Вызывается при выборе шрифта пользователем, чтобы канвас сразу отобразил его.
  */
-export async function ensureFontFace(value: string, item?: FontItem): Promise<boolean> {
-  const key = value.toLowerCase()
-  console.log(
-    `[ensureFontFace] value="${value}" key="${key}" already loaded=${loadedFonts.has(key)}`
-  )
-  console.log(`[ensureFontFace] fontPathIndex.has(key)=${fontPathIndex.has(key)}`)
-  console.log(
-    `[ensureFontFace] fontPathIndex keys (first 5):`,
-    [...fontPathIndex.keys()].slice(0, 5)
-  )
+export async function ensureFontFace(fullName: string): Promise<boolean> {
+  const key = fullName.toLowerCase()
+  if (loadedFonts.has(key)) return true
+  console.log(fullName)
 
-  if (loadedFonts.has(key)) {
-    if (item && !item.loaded) item.loaded = true
-    console.log(`[ensureFontFace] уже загружен, выходим`)
-    return true
-  }
+  const result = await readFontBuffer(fullName)
+  if (!result) return false
 
-  const path = fontPathIndex.get(key)
-  if (!path) {
-    console.warn(`[ensureFontFace] путь НЕ НАЙДЕН для key="${key}"`)
-    console.log(`[ensureFontFace] все ключи в индексе:`, [...fontPathIndex.keys()])
-    return false
-  }
-  console.log(`[ensureFontFace] путь: ${path}`)
+  const { buf, path } = result
+  const ext = path.split('.').pop()?.toLowerCase() ?? 'ttf'
+  const mime = ext === 'otf' ? 'font/otf' : 'font/truetype'
+  const b64 = btoa(Array.from(new Uint8Array(buf), (b) => String.fromCharCode(b)).join(''))
 
   try {
-    const buf = await filesystem.readBinaryFile(path)
-    const friendlyName = getFriendlyName(buf, value)
-    const friendlyKey = friendlyName.toLowerCase()
-    console.log(`[ensureFontFace] friendlyName="${friendlyName}"`)
-
-    if (item) {
-      item.label = friendlyName
-      item.loaded = true
-    }
-
-    // ── FontFace API ────────────────────────────────────────────────────────────
-    const face = new FontFace(friendlyName, buf)
+    const face = new FontFace(fullName, buf)
     await face.load()
     document.fonts.add(face)
 
-    // Alias под именем файла — страховка от race condition
-    if (value !== friendlyName) {
-      try {
-        const faceAlias = new FontFace(value, buf)
-        await faceAlias.load()
-        document.fonts.add(faceAlias)
-      } catch {
-        /* alias не критичен */
-      }
-    }
-
-    // ── Инжект <style>@font-face{...} в DOM ─────────────────────────────────
-    // document.fonts.add() регистрирует шрифт, но браузер не пересчитывает
-    // стили уже отрендеренных элементов. Инжект <style> форсирует немедленный
-    // CSS recompute — именно так работал старый код через статические @font-face.
-    const ext = path.split('.').pop()?.toLowerCase() ?? 'ttf'
-    const mime = ext === 'otf' ? 'font/otf' : 'font/truetype'
-    const b64 = btoa(Array.from(new Uint8Array(buf), (b) => String.fromCharCode(b)).join(''))
-    const injectId = `ff-${friendlyKey.replace(/[^a-z0-9]/g, '-')}`
+    // Инжект <style> форсирует CSS recompute для уже отрендеренных элементов
+    const injectId = `ff-${key.replace(/[^a-z0-9]/g, '-')}`
     if (!document.getElementById(injectId)) {
       const style = document.createElement('style')
       style.id = injectId
-      style.textContent = [
-        `@font-face {`,
-        `  font-family: "${friendlyName}";`,
-        `  src: url("data:${mime};base64,${b64}");`,
-        `  font-weight: normal; font-style: normal;`,
-        `}`,
-        // alias по имени файла
-        value !== friendlyName
-          ? [
-              `@font-face {`,
-              `  font-family: "${value}";`,
-              `  src: url("data:${mime};base64,${b64}");`,
-              `  font-weight: normal; font-style: normal;`,
-              `}`
-            ].join('')
-          : ''
-      ].join('')
+      style.textContent = `@font-face { font-family: "${fullName}"; src: url("data:${mime};base64,${b64}"); font-weight: normal; font-style: normal; }`
       document.head.appendChild(style)
-      console.log(`[ensureFontFace] <style> инжектирован id="${injectId}"`)
     }
 
     loadedFonts.add(key)
-    loadedFonts.add(friendlyKey)
-
-    if (!fontPathIndex.has(friendlyKey)) {
-      fontPathIndex.set(friendlyKey, path)
-    }
-
-    fontBufCache.set(friendlyKey, buf)
-    fontBufCache.set(key, buf)
-
-    if (item) {
-      console.log(`[ensureFontFace] item.value: "${item.value}" → "${friendlyName}"`)
-      item.value = friendlyName
-    }
     return true
   } catch (e) {
-    console.error(`[ensureFontFace] ошибка при загрузке "${value}":`, e)
+    console.error(`[ensureFontFace] ошибка при загрузке "${fullName}":`, e)
     return false
   }
 }
 
 /**
  * Возвращает opentype.Font для SVG-рендерера.
- * Если шрифт ещё не загружен — загружает (ensureFontFace уже вызван при выборе,
- * но на случай прямой печати без открытия дропдауна делаем это здесь).
+ * Если шрифт ещё не зарегистрирован в браузере — регистрирует попутно.
  */
 export async function loadFont(family: string): Promise<opentype.Font | null> {
   const key = family.toLowerCase()
   if (fontCache.has(key)) return fontCache.get(key)!
 
-  // Найдём путь — сначала по friendlyName, потом по fileBase
-  let path = fontPathIndex.get(key)
-  if (!path) {
-    // Может быть сохранён под friendlyName (после ensureFontFace обновил value)
-    // Ищем перебором — Map маленькая, это нормально
-    for (const [k, p] of fontPathIndex) {
-      if (k === key) {
-        path = p
-        break
-      }
-    }
+  const result = await readFontBuffer(family)
+  if (!result) {
+    fontCache.set(key, null)
+    return null
   }
-  if (!path) path = `${FONTS_DIR}/${family}.ttf`
+
+  const { buf } = result
 
   try {
-    const buf = await filesystem.readBinaryFile(path)
-    // Убедимся что FontFace тоже зарегистрирован
     if (!loadedFonts.has(key)) {
       const face = new FontFace(family, buf)
       await face.load()
@@ -284,8 +185,8 @@ export async function loadFont(family: string): Promise<opentype.Font | null> {
     const font = opentype.parse(buf)
     fontCache.set(key, font)
     return font
-  } catch {
-    console.warn(`[SVG renderer] Font not found: ${path}`)
+  } catch (e) {
+    console.warn(`[SVG renderer] не удалось разобрать шрифт "${family}":`, e)
     fontCache.set(key, null)
     return null
   }
@@ -437,7 +338,6 @@ function renderImageSVG(src: string, pos: ElementPosition): string {
   const w = (pos.w * MM_TO_PX).toFixed(2)
   const h = (pos.h * MM_TO_PX).toFixed(2)
 
-  // Inline SVG: вырезаем корневой тег, вставляем содержимое в <g transform>
   if (src.trimStart().startsWith('<svg') || src.startsWith('data:image/svg')) {
     const rawSVG = src.startsWith('data:image/svg') ? atob(src.split(',')[1]) : src
     const vbMatch = rawSVG.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/)
@@ -459,7 +359,6 @@ function renderImageSVG(src: string, pos: ElementPosition): string {
     return `<g transform="translate(${x},${y})">${inner}</g>`
   }
 
-  // Растровое изображение (PNG/JPG/base64)
   return `<image href="${src}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid meet"/>`
 }
 

@@ -119,11 +119,27 @@ function onResizeStop(id: string, xPx: number, yPx: number, wPx: number, hPx: nu
               fontSize: (elements[id]?.props.fontSize ?? 12) * zoom + 'px',
               lineHeight: 1.2,
               fontWeight: elements[id]?.props.bold ? 'bold' : 'normal',
-              textAlign: elements[id]?.props.align,
-              fontFamily: elements[id]?.props.fontFamily ?? 'Arial'
+              fontFamily: `'${elements[id]?.props.fontFamily ?? 'Arial'}'`,
+              justifyContent:
+                elements[id]?.props.align === 'center'
+                  ? 'center'
+                  : elements[id]?.props.align === 'right'
+                    ? 'flex-end'
+                    : 'flex-start'
             }"
           >
-            {{ store.getDisplayText(elements[id]!) }}
+            <!-- Span занимает всю ширину, text-align выравнивает текст внутри него.
+                 Без этого враппера justify-content позиционирует анонимный flex-элемент
+                 (текстовый узел) по центру вне зависимости от выбранного выравнивания. -->
+            <span
+              :style="{
+                width: '100%',
+                textAlign: elements[id]?.props.align ?? 'left',
+                wordBreak: 'break-word',
+                overflow: 'hidden'
+              }"
+              >{{ store.getDisplayText(elements[id]!) }}</span
+            >
           </div>
 
           <!-- BARCODE -->

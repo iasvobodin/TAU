@@ -41,7 +41,6 @@ export class LabelPrinterMulty {
   }
 
   // ── Barcode generators ─────────────────────────────────────────────────────
-  // Параметры зеркалят store.generateBarcode
 
   private async generateDataMatrix(text: string, scale = 2): Promise<string> {
     const canvas = document.createElement('canvas')
@@ -56,8 +55,7 @@ export class LabelPrinterMulty {
   }
 
   // ── Position → CSS ─────────────────────────────────────────────────────────
-  // Принимает позицию в мм и размер этикетки в мм, возвращает % для CSS.
-  // Нет ничего про gridCols/gridRows — только мм.
+
   private positionToPercent(pos: ElementPosition, labelWidthMM: number, labelHeightMM: number) {
     return {
       left: (pos.x / labelWidthMM) * 100,
@@ -68,6 +66,7 @@ export class LabelPrinterMulty {
   }
 
   // ── Field value resolver ───────────────────────────────────────────────────
+
   private resolveFieldValue(element: PrintLabelElement, data: CommonData, serial?: string): string {
     if (element.type === 'barcode') {
       if (element.dataField.includes('serial') && serial) return serial
@@ -80,6 +79,7 @@ export class LabelPrinterMulty {
   }
 
   // ── HTML for one label ─────────────────────────────────────────────────────
+
   private async generateLabelHTML(
     templateData: PrintTemplateData,
     data: CommonData,
@@ -87,7 +87,6 @@ export class LabelPrinterMulty {
   ): Promise<string> {
     const { positions, elements, labelSize } = templateData
 
-    // Размер этикетки всегда в px для HTML-рендера
     const widthPX = labelSize.unit === 'mm' ? labelSize.width * MM_TO_PX : labelSize.width
     const heightPX = labelSize.unit === 'mm' ? labelSize.height * MM_TO_PX : labelSize.height
     const widthMM = labelSize.unit === 'mm' ? labelSize.width : labelSize.width / MM_TO_PX
@@ -101,15 +100,16 @@ export class LabelPrinterMulty {
 
       const pct = this.positionToPercent(pos, widthMM, heightMM)
 
-      const wrapStyle = `
-        position: absolute;
-        left:   ${pct.left}%;
-        top:    ${pct.top}%;
-        width:  ${pct.width}%;
-        height: ${pct.height}%;
-        box-sizing: border-box;
-        overflow: hidden;
-      `
+      // Базовые стили позиционирования — без переносов строк, без кавычек внутри
+      const baseStyle = [
+        `position:absolute`,
+        `left:${pct.left}%`,
+        `top:${pct.top}%`,
+        `width:${pct.width}%`,
+        `height:${pct.height}%`,
+        `box-sizing:border-box`,
+        `overflow:hidden`
+      ].join(';')
 
       if (element.type === 'text') {
         const fieldValue = this.resolveFieldValue(element, data, serial)
@@ -119,24 +119,24 @@ export class LabelPrinterMulty {
             : element.props.align === 'right'
               ? 'flex-end'
               : 'flex-start'
-        console.log(
-          `[printHTML] text el id=${id} font="${element.props.fontFamily}" align=${element.props.align} justify=${justifyContent} value="${fieldValue.slice(0, 20)}"`
-        )
 
-        elementsHTML += `
-          <div style="${wrapStyle}
-            font-size:       ${element.props.fontSize ?? 12}px;
-            line-height:     1.2;
-            font-weight:     ${element.props.bold ? 'bold' : 'normal'};
-            font-family:     "${element.props.fontFamily ?? 'Arial'}";
-            text-align:      ${element.props.align ?? 'left'};
-            display:         flex;
-            align-items:     center;
-            justify-content: ${justifyContent};
-            padding:         4px;
-            word-break:      break-word;
-          ">${fieldValue || ' '}</div>
-        `
+        const style =
+          baseStyle +
+          ';' +
+          [
+            `font-size:${element.props.fontSize ?? 12}px`,
+            `line-height:1`,
+            `font-weight:${element.props.bold ? 'bold' : 'normal'}`,
+            `font-family:'${element.props.fontFamily ?? 'Arial'}'`,
+            `text-align:${element.props.align ?? 'left'}`,
+            `display:flex`,
+            `align-items:center`,
+            `justify-content:${justifyContent}`,
+            `padding:0px`,
+            `word-break:break-word`
+          ].join(';')
+
+        elementsHTML += `<div style="${style}">${fieldValue || ' '}</div>`
       } else if (element.type === 'barcode') {
         const fieldValue = this.resolveFieldValue(element, data, serial)
         let barcodeImage = ''
@@ -150,41 +150,27 @@ export class LabelPrinterMulty {
                   element.props.barcodeScale ?? 2
                 )
         }
-        elementsHTML += `
-          <div style="${wrapStyle} display:flex; align-items:center; justify-content:center;">
-            ${
-              barcodeImage
-                ? `<img src="${barcodeImage}" style="max-width:100%; max-height:100%; object-fit:contain;" />`
-                : '<span style="color:#999;">[Штрихкод]</span>'
-            }
-          </div>
-        `
+
+        const style = baseStyle + ';display:flex;align-items:center;justify-content:center'
+        const inner = barcodeImage
+          ? `<img src="${barcodeImage}" style="max-width:100%;max-height:100%;object-fit:contain"/>`
+          : `<span style="color:#999">[Штрихкод]</span>`
+        elementsHTML += `<div style="${style}">${inner}</div>`
       } else if (element.type === 'image') {
         const src = element.props.src ?? ''
-        // Если src — сырой SVG-текст, вставляем inline; иначе используем <img>
+        const style = baseStyle + ';display:flex;align-items:center;justify-content:center'
         const imageContent = src.trimStart().startsWith('<svg')
-          ? `<div style="max-width:100%;max-height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center;">${src}</div>`
-          : `<img src="${src}"
-              style="max-width:100%; max-height:100%; object-fit:contain;
-                ${element.props.imageWidth ? `width:${element.props.imageWidth}px;` : ''}
-                ${element.props.imageHeight ? `height:${element.props.imageHeight};` : ''}"
-              alt="image" />`
-        elementsHTML += `
-          <div style="${wrapStyle} display:flex; align-items:center; justify-content:center;">
-            ${imageContent}
-          </div>
-        `
+          ? `<div style="max-width:100%;max-height:100%;overflow:hidden;display:flex;align-items:center;justify-content:center">${src}</div>`
+          : `<img src="${src}" style="max-width:100%;max-height:100%;object-fit:contain${element.props.imageWidth ? `;width:${element.props.imageWidth}px` : ''}${element.props.imageHeight ? `;height:${element.props.imageHeight}` : ''}" alt=""/>`
+        elementsHTML += `<div style="${style}">${imageContent}</div>`
       }
     }
 
-    return `
-      <div class="page" style="width:${widthPX}px; height:${heightPX}px; position:relative;">
-        ${elementsHTML}
-      </div>
-    `
+    return `<div class="page" style="width:${widthPX}px;height:${heightPX}px;position:relative">${elementsHTML}</div>`
   }
 
   // ── Сбор уникальных шрифтов из шаблона и генерация @font-face блока ────────
+
   private async buildFontFaceCSS(templateData: PrintTemplateData): Promise<string> {
     const families = new Set<string>()
     for (const el of Object.values(templateData.elements)) {
@@ -192,25 +178,17 @@ export class LabelPrinterMulty {
         families.add(el.props.fontFamily)
       }
     }
-    console.log('[printHTML] шрифты в шаблоне:', [...families])
 
     const blocks: string[] = []
     for (const family of families) {
       const dataUrl = await getFontBase64(family)
-      console.log(
-        `[printHTML] getFontBase64("${family}"):`,
-        dataUrl ? `OK (${dataUrl.slice(0, 40)}...)` : 'НЕ НАЙДЕН'
-      )
       if (dataUrl) {
         blocks.push(
-          `@font-face { font-family: "${family}"; src: url("${dataUrl}"); font-weight: normal; font-style: normal; }`
+          `@font-face { font-family: '${family}'; src: url("${dataUrl}"); font-weight: normal; font-style: normal; }`
         )
       }
     }
-    console.log('[printHTML] @font-face блоков сгенерировано:', blocks.length)
-    if (blocks.length)
-      console.log('[printHTML] первый блок (первые 120 символов):', blocks[0].slice(0, 120))
-    return blocks.join('')
+    return blocks.join('\n')
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
@@ -229,8 +207,7 @@ export class LabelPrinterMulty {
       this.buildFontFaceCSS(templateData)
     ])
 
-    const fullHtml = `
-<!DOCTYPE html>
+    const fullHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
@@ -261,9 +238,6 @@ export class LabelPrinterMulty {
     await neuWindow.create('/.tmp/print-multy.html', this.windowConfig)
   }
 
-  // SVG-рендерер: весь текст и штрихкоды — path-ы, единственный файл
-  // Использует renderToSVG.ts. Все остальное (позиционирование, данные)
-  // берётся из того же PrintTemplateData что и HTML-рендерер.
   public async printFromTemplateSVG(
     items: BatchItem[],
     common: CommonData,

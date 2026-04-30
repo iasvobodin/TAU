@@ -3,7 +3,8 @@ import { defineStore } from 'pinia'
 import bwipjs from 'bwip-js'
 import { os, filesystem } from '@neutralinojs/lib'
 import { LabelPrinterMulty } from '@/assets/printLabelMultyСopy'
-import { getAvailableFonts, type FontInfo } from '@/assets/renderToSVG'
+import { fontManager } from '@/assets/fontManager'
+import type { FontInfo } from '@/assets/renderToSVG'
 import type {
   ElementType,
   ElementPosition,
@@ -37,20 +38,43 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
   const batchCommonData = ref<Record<string, string>>({})
   const batchSerialsText = ref('261200001-01\n261200002-01\n261200003-01')
   const batchPrintEnabled = ref(false)
-  const svgRenderEnabled = ref(false) // SVG-рендерер вместо HTML
+  const svgRenderEnabled = ref(false)
   const lastSavedPath = ref<string>('')
-  const availableFonts = ref<FontInfo[]>([{ label: 'Arial', value: 'Arial' }])
+
+  const availableFonts = ref<FontInfo[]>([{ label: 'Arial', value: 'Arial', svgPreviewPath: '' }])
   const fontsLoading = ref(true)
 
-  // Загружаем шрифты при старте (параллельно — быстро)
-  getAvailableFonts().then((fonts) => {
-    if (fonts.length) availableFonts.value = fonts
+  // ── Инициализация fontManager ─────────────────────────────────────────────
+  // init() — быстро, читает кэш с диска → шрифты сразу доступны
+  // scan() — медленно, обходит систему → запускаем в фоне
+  ;(async () => {
+    await fontManager.init()
+
+    const fromCache = fontManager.getSupportedFonts()
+    if (fromCache.length) {
+      availableFonts.value = fromCache.map((e) => ({
+        label: e.fullName,
+        value: e.fullName,
+        svgPreviewPath: e.svgPreviewPath
+      }))
+    }
     fontsLoading.value = false
-  })
+
+    // Фоновое сканирование: добавляет новые шрифты и обновляет список
+    fontManager.scan().then(() => {
+      const all = fontManager.getSupportedFonts()
+      if (all.length) {
+        availableFonts.value = all.map((e) => ({
+          label: e.fullName,
+          value: e.fullName,
+          svgPreviewPath: e.svgPreviewPath
+        }))
+      }
+    })
+  })()
 
   // ===== Computed =====
 
-  // Размер этикетки в мм (всегда)
   const labelSizeMM = computed(() => {
     if (labelSize.value.unit === 'mm') {
       return { width: labelSize.value.width, height: labelSize.value.height }
@@ -61,13 +85,11 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     }
   })
 
-  // Размер этикетки в px с учётом зума — нужен только для канваса
   const labelSizeInPx = computed(() => ({
     width: labelSizeMM.value.width * MM_TO_PX * zoom.value,
     height: labelSizeMM.value.height * MM_TO_PX * zoom.value
   }))
 
-  // Реальный размер в px без зума (для отображения в панели)
   const realSizeInPx = computed(() => ({
     width: labelSizeMM.value.width * MM_TO_PX,
     height: labelSizeMM.value.height * MM_TO_PX
@@ -161,7 +183,6 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
   }
 
   // ===== Position management =====
-  // Зажимает позицию внутри этикетки (в мм)
   function clampToLabel(pos: ElementPosition): ElementPosition {
     const { width, height } = labelSizeMM.value
     const w = Math.min(pos.w, width)
@@ -171,8 +192,6 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     return { x, y, w, h }
   }
 
-  // Единственный метод обновления позиции — вызывается из канваса
-  // Канвас сам конвертирует px→мм и передаёт сюда готовые мм
   function updatePosition(id: string, pos: ElementPosition): void {
     positions.value[id] = clampToLabel(pos)
   }
@@ -221,7 +240,6 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
         ? `${baseField ?? 'serial'}_barcode`
         : generateFieldName((baseField ?? 'custom') as keyof FieldCounters)
 
-    // Дефолтный размер: 1/3 ширины × 1/6 высоты (или крупнее для штрихкода)
     const { width, height } = labelSizeMM.value
     const defaultPos: ElementPosition = clampToLabel({
       x: 0,
@@ -317,7 +335,6 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
   async function applyTemplateData(parsed: any): Promise<void> {
     if (parsed.labelSize) labelSize.value = parsed.labelSize
 
-    // ── Позиции: новый формат (positions) или старый (layout + gridCols/gridRows) ──
     if (parsed.positions) {
       positions.value = parsed.positions
     } else if (parsed.layout) {

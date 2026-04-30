@@ -3,8 +3,7 @@ import { nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import { os, filesystem } from '@neutralinojs/lib'
 import { useLabelEditorStore } from '@/stores/labelEditor'
-import { ensureFontFace, loadFont } from '@/assets/renderToSVG'
-import type { FontItem } from '@/assets/renderToSVG'
+import { ensureFontFace } from '@/assets/renderToSVG'
 
 const store = useLabelEditorStore()
 const { selectedElement, selectedId, availableFonts, fontsLoading } = storeToRefs(store)
@@ -15,83 +14,19 @@ function onTextInput(value: string) {
   }
 }
 
-// Вызывается при выборе шрифта — гарантирует что FontFace зарегистрирован
-// и шрифт виден в канвасе
+/**
+ * Вызывается когда пользователь выбирает шрифт в дропдауне.
+ * value === fullName из fontManager (хранится в props.fontFamily).
+ * ensureFontFace загружает бинарник шрифта и регистрирует FontFace в браузере,
+ * чтобы канвас немедленно отобразил выбранный шрифт.
+ */
 async function onFontChange(value: string) {
   if (!value) return
-  console.group(`[font] onFontChange("${value}")`)
 
-  // v-autocomplete эмитит item.value — это либо fileBase либо friendlyName
-  // в зависимости от того, успел ли IntersectionObserver обновить item.value
-  const item = availableFonts.value.find((f) => f.value === value)
-  console.log(
-    '[font] item найден:',
-    item ? `label="${item.label}" value="${item.value}" loaded=${item.loaded}` : 'НЕ НАЙДЕН'
-  )
-  console.log(
-    '[font] availableFonts первые 5:',
-    availableFonts.value.slice(0, 5).map((f) => f.value)
-  )
-
-  const ok = await ensureFontFace(value, item)
-  console.log('[font] ensureFontFace вернул:', ok)
-
-  const finalValue = item?.value ?? value
-  console.log('[font] finalValue для fontFamily:', finalValue)
+  await ensureFontFace(value)
 
   if (selectedElement.value?.type === 'text') {
-    // Сначала применяем шрифт
-    selectedElement.value.props.fontFamily = finalValue
-
-    // <style> инжект в ensureFontFace уже форсировал CSS recompute,
-    // но Vue ещё не перерисовал элемент. Делаем "пинг": сбрасываем → nextTick → восстанавливаем.
-    // Это заставляет браузер переприменить font-family уже после регистрации шрифта.
-    await nextTick()
-    selectedElement.value.props.fontFamily = ''
-    await nextTick()
-    selectedElement.value.props.fontFamily = finalValue
-
-    console.log('[font] fontFamily применён:', selectedElement.value.props.fontFamily)
-
-    // Проверяем computed style после пинга
-    await nextTick()
-    const canvasEl = document.querySelector(
-      '.label-element--selected .element-content'
-    ) as HTMLElement | null
-    if (canvasEl) {
-      console.log(
-        '[font] computed fontFamily на канвасе:',
-        window.getComputedStyle(canvasEl).fontFamily
-      )
-    } else {
-      console.warn('[font] элемент не найден в DOM')
-    }
-  }
-
-  console.groupEnd()
-}
-
-// Директива v-lazy-font: загружает шрифт когда элемент списка входит во viewport.
-// Используется в #item слоте v-autocomplete для ленивого превью.
-const vLazyFont = {
-  mounted(el: HTMLElement, binding: { value: FontItem }) {
-    const item = binding.value
-    if (item.loaded) return
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          ensureFontFace(item.value, item)
-          observer.disconnect()
-        }
-      },
-      { threshold: 0 }
-    )
-    observer.observe(el)
-    // Сохраняем observer чтобы отключить при размонтировании
-    ;(el as any).__fontObserver = observer
-  },
-  unmounted(el: HTMLElement) {
-    ;(el as any).__fontObserver?.disconnect()
+    selectedElement.value.props.fontFamily = value
   }
 }
 
@@ -113,26 +48,16 @@ async function pickImageFile() {
   const ext = path.split('.').pop()?.toLowerCase()
 
   if (ext === 'svg') {
-    // SVG читаем как бинарный файл и кодируем в base64 data URL.
-    // Сырой SVG-текст не работает в <img src="...">, data URL — работает везде.
     const buf = await filesystem.readBinaryFile(path)
     const uint8 = new Uint8Array(buf)
-    // btoa требует latin1 — перекодируем UTF-8 через escape trick
     const b64 = btoa(Array.from(uint8, (b) => String.fromCharCode(b)).join(''))
     el.props.src = `data:image/svg+xml;base64,${b64}`
   } else {
-    // Растровое — читаем как бинарный файл и конвертируем в base64 data URL
     const buf = await filesystem.readBinaryFile(path)
     const uint8 = new Uint8Array(buf)
     const b64 = btoa(String.fromCharCode(...uint8))
     const mime =
-      ext === 'svg'
-        ? 'image/svg+xml'
-        : ext === 'jpg' || ext === 'jpeg'
-          ? 'image/jpeg'
-          : ext === 'webp'
-            ? 'image/webp'
-            : 'image/png'
+      ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png'
     el.props.src = `data:${mime};base64,${b64}`
   }
 }
@@ -176,43 +101,64 @@ async function pickImageFile() {
         <!-- ── Текст ── -->
         <template v-if="selectedElement.type === 'text'">
           <!-- Шрифт и размер в одной строке -->
+          <v-container>
+            <v-row>
+              <v-autocomplete
+                v-model="selectedElement.props.fontFamily"
+                :items="availableFonts"
+                item-title="label"
+                item-value="value"
+                width="100%"
+                label="Шрифт"
+                density="compact"
+                style="min-width: 120px; flex: 1"
+                hide-details
+                auto-select-first
+                clearable
+                :loading="fontsLoading"
+                @update:model-value="onFontChange"
+              >
+                <template #item="{ item, props: itemProps }">
+                  <v-list-item v-bind="itemProps" :title="undefined">
+                    <!-- SVG-превью из fontManager (.tmp/previews/*.svg) -->
+                    <template v-if="item.raw.svgPreviewPath">
+                      <img
+                        :src="`http://127.0.0.1:8080${item.raw.svgPreviewPath}`"
+                        :alt="item.raw.label"
+                        style="
+                          height: 28px;
+                          max-width: 200px;
+                          object-fit: contain;
+                          display: block;
+                          padding: 2px 0;
+                        "
+                      />
+                    </template>
+                    <!-- Fallback: просто имя шрифта -->
+                    <template v-else>
+                      <span style="font-size: 15px">{{ item.raw.label }}</span>
+                    </template>
+                  </v-list-item>
+                </template>
+
+                <!-- Выбранное значение в поле ввода — всегда текст -->
+                <template #selection="{ item }">
+                  <span style="font-size: 13px">{{ item.raw.label }}</span>
+                </template>
+              </v-autocomplete>
+            </v-row>
+          </v-container>
           <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; width: 100%">
-            <v-autocomplete
-              v-model="selectedElement.props.fontFamily"
-              :items="availableFonts"
-              item-title="label"
-              item-value="value"
-              label="Шрифт"
-              density="compact"
-              style="min-width: 120px; flex: 1"
-              hide-details
-              auto-select-first
-              clearable
-              :loading="fontsLoading"
-              @update:model-value="onFontChange"
-            >
-              <!--
-                #item слот: каждая строка отображает имя своим шрифтом.
-                v-lazy-font запускает IntersectionObserver — шрифт загружается
-                только когда строка прокручивается в видимую область.
-                После загрузки item.label обновляется на friendlyName реактивно.
-              -->
-              <template #item="{ item, props: itemProps }">
-                <v-list-item v-bind="itemProps" :title="undefined" v-lazy-font="item.raw">
-                  <span
-                    :style="{
-                      fontFamily: item.raw.loaded ? item.raw.value : 'inherit',
-                      fontSize: '15px'
-                    }"
-                  >
-                    {{ item.raw.label }}
-                  </span>
-                  <template v-if="!item.raw.loaded" #append>
-                    <v-progress-circular size="12" width="1" indeterminate color="grey-lighten-1" />
-                  </template>
-                </v-list-item>
-              </template>
-            </v-autocomplete>
+            <!--
+              Дропдаун шрифтов.
+              item-value="value" → хранит fullName (то же что label).
+              В слоте #item показываем SVG-превью из fontManager:
+                - если svgPreviewPath задан → <img> с готовым SVG (без загрузки шрифта)
+                - иначе → текстовое имя как fallback
+              ensureFontFace вызывается только при выборе шрифта (onFontChange),
+              а не при прокрутке списка — превью уже готовы на диске.
+            -->
+
             <v-text-field
               v-model.number="selectedElement.props.fontSize"
               type="number"

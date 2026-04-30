@@ -5,6 +5,26 @@ import AddElementPanel from './label-editor/AddElementPanel.vue'
 import ElementPropsPanel from './label-editor/ElementPropsPanel.vue'
 import LabelCanvas from './label-editor/LabelCanvas.vue'
 import PrintDataPanel from './label-editor/PrintDataPanel.vue'
+import { FontManager } from '@/assets/font-manager-chatgpt'
+
+// const manager = new FontManager()
+
+// async function startApp() {
+//   await manager.init()
+//   await manager.scan()
+//   const fonts = manager.getFonts()
+//   console.log(`Loaded ${fonts.length} fonts.`)
+// }
+
+// startApp()
+
+// const fontManager = new FontManager()
+
+// async function startApp() {
+//   await fontManager.init()
+// }
+
+// startApp()
 
 const store = useLabelEditorStore()
 </script>
