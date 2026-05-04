@@ -108,15 +108,14 @@ const store = useLabelEditorStore()
           padding: 12px;
           flex-shrink: 0;
         "
-      >
-        <ElementPropsPanel />
-      </div>
+      ></div>
     </div>
 
     <!-- ── Правая часть — канвас + печать ── -->
     <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0">
       <!-- Канвас занимает всё доступное пространство -->
       <div style="flex: 1; overflow: auto; min-height: 0">
+        <ElementPropsPanel />
         <LabelCanvas />
       </div>
 

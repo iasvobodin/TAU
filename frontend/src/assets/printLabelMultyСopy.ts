@@ -113,6 +113,13 @@ export class LabelPrinterMulty {
 
       if (element.type === 'text') {
         const fieldValue = this.resolveFieldValue(element, data, serial)
+        const lineHeight = element.props.lineHeight ?? 1.2
+        const vertAlign = element.props.verticalAlign ?? 'middle'
+        const pX = element.props.paddingX ?? 4
+        const pY = element.props.paddingY ?? 0
+
+        const alignItems =
+          vertAlign === 'top' ? 'flex-start' : vertAlign === 'bottom' ? 'flex-end' : 'center'
         const justifyContent =
           element.props.align === 'center'
             ? 'center'
@@ -125,18 +132,19 @@ export class LabelPrinterMulty {
           ';' +
           [
             `font-size:${element.props.fontSize ?? 12}px`,
-            `line-height:1`,
+            `line-height:${lineHeight}`,
             `font-weight:${element.props.bold ? 'bold' : 'normal'}`,
             `font-family:'${element.props.fontFamily ?? 'Arial'}'`,
-            `text-align:${element.props.align ?? 'left'}`,
             `display:flex`,
-            `align-items:center`,
+            `align-items:${alignItems}`,
             `justify-content:${justifyContent}`,
-            `padding:0px`,
+            `padding:${pY}px ${pX}px`,
             `word-break:break-word`
           ].join(';')
 
-        elementsHTML += `<div style="${style}">${fieldValue || ' '}</div>`
+        // span растягивается на всю ширину — text-align работает внутри flex-контейнера
+        const spanStyle = `width:100%;text-align:${element.props.align ?? 'left'};word-break:break-word;overflow:hidden`
+        elementsHTML += `<div style="${style}"><span style="${spanStyle}">${fieldValue || ' '}</span></div>`
       } else if (element.type === 'barcode') {
         const fieldValue = this.resolveFieldValue(element, data, serial)
         let barcodeImage = ''

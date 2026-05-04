@@ -262,8 +262,12 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
         ...(type === 'text' && {
           fontSize: baseFontSize,
           align: 'left',
+          verticalAlign: 'middle',
           bold: false,
           fontFamily: 'Arial',
+          lineHeight: 1.2,
+          paddingX: 4,
+          paddingY: 0,
           customText: getDefaultText(baseField)
         }),
         ...(type === 'barcode' && {
@@ -311,7 +315,11 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
                 fontSize: el.props.fontSize,
                 bold: el.props.bold,
                 align: el.props.align,
-                fontFamily: el.props.fontFamily
+                verticalAlign: el.props.verticalAlign,
+                fontFamily: el.props.fontFamily,
+                lineHeight: el.props.lineHeight,
+                paddingX: el.props.paddingX,
+                paddingY: el.props.paddingY
               }),
               ...(el.type === 'barcode' && {
                 barcodeType: el.props.barcodeType,

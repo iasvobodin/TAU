@@ -18,7 +18,11 @@ export interface LabelElementProps {
   fontSize?: number
   bold?: boolean
   align?: 'left' | 'center' | 'right'
+  verticalAlign?: 'top' | 'middle' | 'bottom'
   fontFamily?: string
+  lineHeight?: number // множитель межстрочного интервала, напр. 1.2
+  paddingX?: number // горизонтальный отступ в px
+  paddingY?: number // вертикальный отступ в px
 
   // Barcode
   barcodeType?: BarcodeType

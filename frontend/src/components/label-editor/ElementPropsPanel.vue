@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick } from 'vue'
+import { ref, computed, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import { os, filesystem } from '@neutralinojs/lib'
 import { useLabelEditorStore } from '@/stores/labelEditor'
@@ -8,33 +8,52 @@ import { ensureFontFace } from '@/assets/renderToSVG'
 const store = useLabelEditorStore()
 const { selectedElement, selectedId, availableFonts, fontsLoading } = storeToRefs(store)
 
+// ── Состояние попапа редактирования текста ────────────────────────────────
+const textPopupOpen = ref(false)
+
+// ── Autocomplete шрифтов: отдельная search-модель + ref для blur ──────────
+// Без этого Vuetify оставляет строку поиска после выбора и не закрывает меню.
+const fontSearch = ref('')
+const fontAC = ref<any>(null)
+
+// Есть ли выбранный элемент — для disabled-состояния контролов
+const hasSelection = computed(() => !!selectedElement.value)
+const isText = computed(() => selectedElement.value?.type === 'text')
+const isBarcode = computed(() => selectedElement.value?.type === 'barcode')
+const isImage = computed(() => selectedElement.value?.type === 'image')
+
+// ── Handlers ──────────────────────────────────────────────────────────────
 function onTextInput(value: string) {
-  if (selectedElement.value?.type === 'text') {
-    selectedElement.value.props.customText = value
-  }
+  if (isText.value) selectedElement.value!.props.customText = value
 }
 
-/**
- * Вызывается когда пользователь выбирает шрифт в дропдауне.
- * value === fullName из fontManager (хранится в props.fontFamily).
- * ensureFontFace загружает бинарник шрифта и регистрирует FontFace в браузере,
- * чтобы канвас немедленно отобразил выбранный шрифт.
- */
 async function onFontChange(value: string) {
-  if (!value) return
+  // Сбрасываем строку поиска и закрываем меню — без этого Vuetify
+  // оставляет autocomplete в "полуоткрытом" состоянии после выбора.
+  fontSearch.value = ''
+  await nextTick()
+  fontAC.value?.blur()
 
+  if (!value || !isText.value) return
   await ensureFontFace(value)
-
-  if (selectedElement.value?.type === 'text') {
-    selectedElement.value.props.fontFamily = value
-  }
+  selectedElement.value!.props.fontFamily = value
 }
 
-// ── Выбор SVG-файла изображения через нативный диалог ────────────────────────
+function toggleBold() {
+  if (isText.value) selectedElement.value!.props.bold = !selectedElement.value!.props.bold
+}
+
+function setAlign(v: 'left' | 'center' | 'right') {
+  if (isText.value) selectedElement.value!.props.align = v
+}
+
+function setVAlign(v: 'top' | 'middle' | 'bottom') {
+  if (isText.value) selectedElement.value!.props.verticalAlign = v
+}
+
 async function pickImageFile() {
   const el = selectedElement.value
   if (!el || el.type !== 'image') return
-
   const entries = await os.showOpenDialog('Выбрать изображение', {
     filters: [
       { name: 'SVG-изображение', extensions: ['svg'] },
@@ -43,277 +62,758 @@ async function pickImageFile() {
     ]
   })
   if (!entries?.length) return
-
   const path = entries[0]
   const ext = path.split('.').pop()?.toLowerCase()
-
   if (ext === 'svg') {
     const buf = await filesystem.readBinaryFile(path)
-    const uint8 = new Uint8Array(buf)
-    const b64 = btoa(Array.from(uint8, (b) => String.fromCharCode(b)).join(''))
-    el.props.src = `data:image/svg+xml;base64,${b64}`
+    el.props.src = `data:image/svg+xml;base64,${btoa(Array.from(new Uint8Array(buf), (b) => String.fromCharCode(b)).join(''))}`
   } else {
     const buf = await filesystem.readBinaryFile(path)
-    const uint8 = new Uint8Array(buf)
-    const b64 = btoa(String.fromCharCode(...uint8))
     const mime =
       ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : 'image/png'
-    el.props.src = `data:${mime};base64,${b64}`
+    el.props.src = `data:${mime};base64,${btoa(String.fromCharCode(...new Uint8Array(buf)))}`
   }
 }
 </script>
 
 <template>
-  <div>
-    <!-- Заголовок с типом элемента и кнопкой удаления -->
-    <div v-if="selectedElement">
-      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px">
-        <v-icon size="14" color="primary">
-          {{
-            selectedElement.type === 'text'
-              ? 'mdi-format-text'
-              : selectedElement.type === 'barcode'
-                ? 'mdi-barcode'
-                : 'mdi-image'
-          }}
-        </v-icon>
-        <span style="font-size: 13px; font-weight: 600; color: #444">
-          {{
-            selectedElement.type === 'text'
-              ? 'Текст'
-              : selectedElement.type === 'barcode'
-                ? 'Штрихкод'
-                : 'Изображение'
-          }}
-        </span>
-        <span style="font-size: 11px; color: #aaa">{{ selectedElement.dataField }}</span>
-        <v-btn
-          icon="mdi-delete-outline"
-          size="x-small"
-          variant="text"
-          color="error"
-          style="margin-left: auto"
-          @click="store.removeElement(selectedId!)"
-        />
-      </div>
+  <!--
+    Ribbon — фиксированная высота 46px, всегда в DOM, не прыгает.
+    Разместить над LabelCanvas: <ElementPropsPanel /> <LabelCanvas />
+  -->
+  <div class="ribbon-root" :class="{ 'ribbon-root--idle': !hasSelection }">
+    <div class="ribbon-row">
+      <!-- ══ БЕЗ ВЫБОРА: подсказка ════════════════════════════════════════ -->
+      <template v-if="!hasSelection">
+        <v-icon size="14" color="#c0c0c0">mdi-cursor-default-click-outline</v-icon>
+        <span class="ribbon-idle-hint">Выберите элемент на макете</span>
+      </template>
 
-      <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start">
-        <!-- ── Текст ── -->
-        <template v-if="selectedElement.type === 'text'">
-          <!-- Шрифт и размер в одной строке -->
-          <v-container>
-            <v-row>
-              <v-autocomplete
-                v-model="selectedElement.props.fontFamily"
-                :items="availableFonts"
-                item-title="label"
-                item-value="value"
-                width="100%"
-                label="Шрифт"
-                density="compact"
-                style="min-width: 120px; flex: 1"
-                hide-details
-                auto-select-first
-                clearable
-                :loading="fontsLoading"
-                @update:model-value="onFontChange"
-              >
-                <template #item="{ item, props: itemProps }">
-                  <v-list-item v-bind="itemProps" :title="undefined">
-                    <!-- SVG-превью из fontManager (.tmp/previews/*.svg) -->
-                    <template v-if="item.raw.svgPreviewPath">
-                      <img
-                        :src="`http://127.0.0.1:8080${item.raw.svgPreviewPath}`"
-                        :alt="item.raw.label"
-                        style="
-                          height: 28px;
-                          max-width: 200px;
-                          object-fit: contain;
-                          display: block;
-                          padding: 2px 0;
-                        "
-                      />
-                    </template>
-                    <!-- Fallback: просто имя шрифта -->
-                    <template v-else>
-                      <span style="font-size: 15px">{{ item.raw.label }}</span>
-                    </template>
-                  </v-list-item>
-                </template>
+      <!-- ══ ТЕКСТ ══════════════════════════════════════════════════════════ -->
+      <template v-else-if="isText">
+        <!-- Тип -->
+        <div class="ribbon-chip ribbon-chip--text">
+          <v-icon size="12">mdi-format-text</v-icon>
+          <span>Текст</span>
+        </div>
+        <div class="ribbon-sep" />
 
-                <!-- Выбранное значение в поле ввода — всегда текст -->
-                <template #selection="{ item }">
-                  <span style="font-size: 13px">{{ item.raw.label }}</span>
-                </template>
-              </v-autocomplete>
-            </v-row>
-          </v-container>
-          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; width: 100%">
-            <!--
-              Дропдаун шрифтов.
-              item-value="value" → хранит fullName (то же что label).
-              В слоте #item показываем SVG-превью из fontManager:
-                - если svgPreviewPath задан → <img> с готовым SVG (без загрузки шрифта)
-                - иначе → текстовое имя как fallback
-              ensureFontFace вызывается только при выборе шрифта (onFontChange),
-              а не при прокрутке списка — превью уже готовы на диске.
-            -->
-
-            <v-text-field
-              v-model.number="selectedElement.props.fontSize"
-              type="number"
-              label="Размер"
-              suffix="px"
-              density="compact"
-              style="width: 80px"
-              hide-details
-            />
-            <v-select
-              v-model="selectedElement.props.align"
-              :items="[
-                { title: '←', value: 'left' },
-                { title: '↔', value: 'center' },
-                { title: '→', value: 'right' }
-              ]"
-              item-title="title"
-              item-value="value"
-              density="compact"
-              style="width: 70px"
-              hide-details
-            />
-            <v-checkbox
-              v-model="selectedElement.props.bold"
-              label="Ж"
-              density="compact"
-              hide-details
-              style="flex: none"
-            />
-          </div>
-
-          <!-- Текстовое содержимое -->
-          <div style="width: 100%">
-            <v-textarea
-              :model-value="store.getDisplayText(selectedElement)"
-              label="Текст"
-              rows="2"
-              density="compact"
-              hide-details
-              auto-grow
-              @update:model-value="onTextInput"
-            />
-          </div>
-        </template>
-
-        <!-- ── Штрихкод ── -->
-        <template v-if="selectedElement.type === 'barcode'">
-          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; width: 100%">
-            <v-select
-              v-model="selectedElement.props.barcodeType"
-              :items="['code128', 'datamatrix']"
-              label="Тип"
-              density="compact"
-              style="width: 120px"
-              hide-details
-              @update:model-value="store.updateBarcode(selectedId!)"
-            />
-            <template v-if="selectedElement.props.barcodeType === 'code128'">
-              <v-text-field
-                v-model.number="selectedElement.props.barcodeHeight"
-                type="number"
-                label="Высота"
-                density="compact"
-                style="width: 80px"
-                hide-details
-                @update:model-value="store.updateBarcode(selectedId!)"
-              />
-            </template>
-            <template v-if="selectedElement.props.barcodeType === 'datamatrix'">
-              <v-text-field
-                v-model.number="selectedElement.props.barcodeScale"
-                type="number"
-                step="1"
-                label="Масштаб"
-                density="compact"
-                style="width: 80px"
-                hide-details
-                @update:model-value="store.updateBarcode(selectedId!)"
-              />
-            </template>
-          </div>
-          <v-text-field
-            v-model="selectedElement.props.testValue"
-            label="Тестовое значение"
+        <!-- Шрифт + размер -->
+        <div class="ribbon-group" style="gap: 4px">
+          <v-autocomplete
+            ref="fontAC"
+            v-model="selectedElement!.props.fontFamily"
+            v-model:search="fontSearch"
+            :items="availableFonts"
+            item-title="label"
+            item-value="value"
             density="compact"
-            style="width: 100%"
+            variant="outlined"
             hide-details
+            clearable
+            :loading="fontsLoading"
+            class="ribbon-font-select"
+            @update:model-value="onFontChange"
+          >
+            <template #item="{ item, props: ip }">
+              <v-list-item v-bind="ip" :title="undefined" min-height="32">
+                <img
+                  v-if="item.raw.svgPreviewPath"
+                  :src="`http://127.0.0.1:8080${item.raw.svgPreviewPath}`"
+                  :alt="item.raw.label"
+                  style="
+                    height: 26px;
+                    max-width: 200px;
+                    object-fit: contain;
+                    display: block;
+                    padding: 2px 0;
+                  "
+                />
+                <span v-else style="font-size: 14px">{{ item.raw.label }}</span>
+              </v-list-item>
+            </template>
+            <template #selection="{ item }">
+              <span class="ribbon-font-label">{{ item.raw.label }}</span>
+            </template>
+          </v-autocomplete>
+
+          <div class="ribbon-spinbox" style="width: 62px">
+            <input
+              v-model.number="selectedElement!.props.fontSize"
+              type="number"
+              min="4"
+              max="999"
+              class="ribbon-spinbox-input"
+              title="Размер шрифта (px)"
+            />
+            <span class="ribbon-spinbox-unit">px</span>
+          </div>
+        </div>
+
+        <div class="ribbon-sep" />
+
+        <!-- Bold -->
+        <div class="ribbon-group">
+          <v-tooltip text="Жирный" location="bottom">
+            <template #activator="{ props: tp }">
+              <button
+                v-bind="tp"
+                :class="['rbn-btn', { 'rbn-btn--active': selectedElement!.props.bold }]"
+                style="font-weight: 700; font-size: 14px; font-family: serif; min-width: 28px"
+                @click="toggleBold"
+              >
+                B
+              </button>
+            </template>
+          </v-tooltip>
+        </div>
+
+        <div class="ribbon-sep" />
+
+        <!-- Горизонтальное выравнивание -->
+        <div class="ribbon-group">
+          <v-tooltip text="По левому краю" location="bottom">
+            <template #activator="{ props: tp }">
+              <button
+                v-bind="tp"
+                :class="[
+                  'rbn-btn',
+                  { 'rbn-btn--active': (selectedElement!.props.align ?? 'left') === 'left' }
+                ]"
+                @click="setAlign('left')"
+              >
+                <v-icon size="16">mdi-format-align-left</v-icon>
+              </button>
+            </template>
+          </v-tooltip>
+          <v-tooltip text="По центру" location="bottom">
+            <template #activator="{ props: tp }">
+              <button
+                v-bind="tp"
+                :class="[
+                  'rbn-btn',
+                  { 'rbn-btn--active': selectedElement!.props.align === 'center' }
+                ]"
+                @click="setAlign('center')"
+              >
+                <v-icon size="16">mdi-format-align-center</v-icon>
+              </button>
+            </template>
+          </v-tooltip>
+          <v-tooltip text="По правому краю" location="bottom">
+            <template #activator="{ props: tp }">
+              <button
+                v-bind="tp"
+                :class="[
+                  'rbn-btn',
+                  { 'rbn-btn--active': selectedElement!.props.align === 'right' }
+                ]"
+                @click="setAlign('right')"
+              >
+                <v-icon size="16">mdi-format-align-right</v-icon>
+              </button>
+            </template>
+          </v-tooltip>
+        </div>
+
+        <div class="ribbon-sep" />
+
+        <!-- Вертикальное выравнивание -->
+        <div class="ribbon-group">
+          <v-tooltip text="К верхнему краю" location="bottom">
+            <template #activator="{ props: tp }">
+              <button
+                v-bind="tp"
+                :class="[
+                  'rbn-btn',
+                  { 'rbn-btn--active': selectedElement!.props.verticalAlign === 'top' }
+                ]"
+                @click="setVAlign('top')"
+              >
+                <v-icon size="16">mdi-format-vertical-align-top</v-icon>
+              </button>
+            </template>
+          </v-tooltip>
+          <v-tooltip text="По вертикали: по центру" location="bottom">
+            <template #activator="{ props: tp }">
+              <button
+                v-bind="tp"
+                :class="[
+                  'rbn-btn',
+                  {
+                    'rbn-btn--active':
+                      (selectedElement!.props.verticalAlign ?? 'middle') === 'middle'
+                  }
+                ]"
+                @click="setVAlign('middle')"
+              >
+                <v-icon size="16">mdi-format-vertical-align-center</v-icon>
+              </button>
+            </template>
+          </v-tooltip>
+          <v-tooltip text="К нижнему краю" location="bottom">
+            <template #activator="{ props: tp }">
+              <button
+                v-bind="tp"
+                :class="[
+                  'rbn-btn',
+                  { 'rbn-btn--active': selectedElement!.props.verticalAlign === 'bottom' }
+                ]"
+                @click="setVAlign('bottom')"
+              >
+                <v-icon size="16">mdi-format-vertical-align-bottom</v-icon>
+              </button>
+            </template>
+          </v-tooltip>
+        </div>
+
+        <div class="ribbon-sep" />
+
+        <!-- Межстрочный -->
+        <div class="ribbon-group" style="gap: 5px">
+          <v-tooltip text="Межстрочный интервал" location="bottom">
+            <template #activator="{ props: tp }">
+              <v-icon v-bind="tp" size="15" color="#666">mdi-format-line-spacing</v-icon>
+            </template>
+          </v-tooltip>
+          <div class="ribbon-spinbox" style="width: 54px">
+            <input
+              v-model.number="selectedElement!.props.lineHeight"
+              type="number"
+              step="0.1"
+              min="0.5"
+              max="5"
+              class="ribbon-spinbox-input"
+              title="Межстрочный интервал"
+            />
+          </div>
+        </div>
+
+        <div class="ribbon-sep" />
+
+        <!-- Отступы -->
+        <div class="ribbon-group" style="gap: 5px">
+          <v-tooltip text="Горизонтальный отступ (px)" location="bottom">
+            <template #activator="{ props: tp }">
+              <v-icon v-bind="tp" size="15" color="#666">mdi-arrow-expand-horizontal</v-icon>
+            </template>
+          </v-tooltip>
+          <div class="ribbon-spinbox" style="width: 50px">
+            <input
+              v-model.number="selectedElement!.props.paddingX"
+              type="number"
+              min="0"
+              max="200"
+              class="ribbon-spinbox-input"
+              title="Отступ X (px)"
+            />
+            <span class="ribbon-spinbox-unit">px</span>
+          </div>
+          <v-tooltip text="Вертикальный отступ (px)" location="bottom">
+            <template #activator="{ props: tp }">
+              <v-icon v-bind="tp" size="15" color="#666">mdi-arrow-expand-vertical</v-icon>
+            </template>
+          </v-tooltip>
+          <div class="ribbon-spinbox" style="width: 50px">
+            <input
+              v-model.number="selectedElement!.props.paddingY"
+              type="number"
+              min="0"
+              max="200"
+              class="ribbon-spinbox-input"
+              title="Отступ Y (px)"
+            />
+            <span class="ribbon-spinbox-unit">px</span>
+          </div>
+        </div>
+
+        <div class="ribbon-sep" />
+
+        <!-- ── Редактировать текст: иконка → попап ─────────────────────── -->
+        <v-menu
+          v-model="textPopupOpen"
+          :close-on-content-click="false"
+          location="bottom start"
+          offset="6"
+        >
+          <template #activator="{ props: mp }">
+            <v-tooltip text="Редактировать текст" location="bottom">
+              <template #activator="{ props: tp }">
+                <button
+                  v-bind="{ ...mp, ...tp }"
+                  :class="['rbn-btn', { 'rbn-btn--active': textPopupOpen }]"
+                  style="gap: 4px; padding: 0 8px; font-size: 11px"
+                >
+                  <v-icon size="14">mdi-pencil-outline</v-icon>
+                  <span>Текст</span>
+                </button>
+              </template>
+            </v-tooltip>
+          </template>
+
+          <!-- Попап -->
+          <div class="text-popup">
+            <div class="text-popup__header">
+              <v-icon size="13" color="#1565c0">mdi-pencil-outline</v-icon>
+              <span>Содержимое блока</span>
+              <button class="text-popup__close" @click="textPopupOpen = false">
+                <v-icon size="14">mdi-close</v-icon>
+              </button>
+            </div>
+            <textarea
+              :value="store.getDisplayText(selectedElement!)"
+              class="text-popup__textarea"
+              placeholder="Введите текст…"
+              rows="4"
+              autofocus
+              @input="onTextInput(($event.target as HTMLTextAreaElement).value)"
+            />
+          </div>
+        </v-menu>
+      </template>
+
+      <!-- ══ ШТРИХКОД ════════════════════════════════════════════════════════ -->
+      <template v-else-if="isBarcode">
+        <div class="ribbon-chip ribbon-chip--barcode">
+          <v-icon size="12">mdi-barcode</v-icon>
+          <span>Штрихкод</span>
+        </div>
+        <div class="ribbon-sep" />
+
+        <div class="ribbon-group" style="gap: 6px">
+          <v-select
+            v-model="selectedElement!.props.barcodeType"
+            :items="['code128', 'datamatrix']"
+            label="Тип"
+            density="compact"
+            variant="outlined"
+            hide-details
+            style="width: 128px"
             @update:model-value="store.updateBarcode(selectedId!)"
           />
-        </template>
+          <template v-if="selectedElement!.props.barcodeType === 'code128'">
+            <div class="ribbon-spinbox" style="width: 66px">
+              <input
+                v-model.number="selectedElement!.props.barcodeHeight"
+                type="number"
+                min="1"
+                class="ribbon-spinbox-input"
+                title="Высота штрихкода"
+                @change="store.updateBarcode(selectedId!)"
+              />
+              <span class="ribbon-spinbox-unit">h</span>
+            </div>
+          </template>
+          <template v-if="selectedElement!.props.barcodeType === 'datamatrix'">
+            <div class="ribbon-spinbox" style="width: 66px">
+              <input
+                v-model.number="selectedElement!.props.barcodeScale"
+                type="number"
+                min="1"
+                step="1"
+                class="ribbon-spinbox-input"
+                title="Масштаб"
+                @change="store.updateBarcode(selectedId!)"
+              />
+              <span class="ribbon-spinbox-unit">×</span>
+            </div>
+          </template>
+        </div>
 
-        <!-- ── Изображение ── -->
-        <template v-if="selectedElement.type === 'image'">
-          <div style="display: flex; gap: 8px; align-items: center; width: 100%">
-            <v-text-field
-              v-model="selectedElement.props.src"
-              label="URL или SVG-контент"
-              density="compact"
-              hide-details
-              style="flex: 1; min-width: 0"
-              :placeholder="'https://... или <svg>...</svg>'"
-            />
-            <v-btn
-              size="small"
-              variant="outlined"
-              color="secondary"
-              prepend-icon="mdi-folder-open-outline"
-              @click="pickImageFile"
-            >
-              Файл
-            </v-btn>
-          </div>
+        <div class="ribbon-sep" />
 
-          <!-- Превью -->
-          <div
-            v-if="selectedElement.props.src"
-            style="
-              width: 100%;
-              max-height: 80px;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              background: #f5f5f5;
-              border-radius: 4px;
-              padding: 4px;
-            "
-          >
-            <div
-              v-if="selectedElement.props.src?.trimStart().startsWith('<svg')"
-              style="max-width: 100%; max-height: 76px; overflow: hidden"
-              v-html="selectedElement.props.src"
-            />
-            <img
-              v-else
-              :src="selectedElement.props.src"
-              style="max-width: 100%; max-height: 76px; object-fit: contain"
-            />
-          </div>
-
-          <v-text-field
-            v-model.number="selectedElement.props.imageWidth"
-            type="number"
-            label="Ширина (px)"
-            density="compact"
-            style="width: 120px"
-            hide-details
+        <div class="ribbon-group" style="gap: 6px">
+          <v-icon size="14" color="#888">mdi-pound</v-icon>
+          <input
+            v-model="selectedElement!.props.testValue"
+            class="ribbon-text-input"
+            style="width: 160px"
+            placeholder="Тестовое значение"
+            @input="store.updateBarcode(selectedId!)"
           />
-        </template>
-      </div>
-    </div>
+        </div>
+      </template>
 
-    <!-- Пустое состояние -->
-    <div v-else style="color: #bbb; font-size: 12px; text-align: center; padding: 20px 0">
-      <v-icon size="28" color="#ddd">mdi-cursor-default-click-outline</v-icon>
-      <div style="margin-top: 6px">Выберите элемент на макете</div>
+      <!-- ══ ИЗОБРАЖЕНИЕ ════════════════════════════════════════════════════ -->
+      <template v-else-if="isImage">
+        <div class="ribbon-chip ribbon-chip--image">
+          <v-icon size="12">mdi-image</v-icon>
+          <span>Изображение</span>
+        </div>
+        <div class="ribbon-sep" />
+
+        <div class="ribbon-group" style="gap: 6px; flex: 1; min-width: 0">
+          <v-icon size="14" color="#888">mdi-link</v-icon>
+          <input
+            v-model="selectedElement!.props.src"
+            class="ribbon-text-input"
+            placeholder="https://… или <svg>…</svg>"
+            style="flex: 1; min-width: 160px; max-width: 360px"
+          />
+          <v-tooltip text="Выбрать файл" location="bottom">
+            <template #activator="{ props: tp }">
+              <button v-bind="tp" class="rbn-btn" @click="pickImageFile">
+                <v-icon size="15">mdi-folder-open-outline</v-icon>
+              </button>
+            </template>
+          </v-tooltip>
+        </div>
+
+        <div class="ribbon-sep" />
+
+        <div class="ribbon-group" style="gap: 5px">
+          <v-icon size="14" color="#888">mdi-arrow-expand-horizontal</v-icon>
+          <div class="ribbon-spinbox" style="width: 70px">
+            <input
+              v-model.number="selectedElement!.props.imageWidth"
+              type="number"
+              min="1"
+              class="ribbon-spinbox-input"
+              title="Ширина (px)"
+            />
+            <span class="ribbon-spinbox-unit">px</span>
+          </div>
+        </div>
+
+        <!-- Превью -->
+        <div v-if="selectedElement!.props.src" class="ribbon-img-preview">
+          <div
+            v-if="selectedElement!.props.src?.trimStart().startsWith('<svg')"
+            class="ribbon-img-inner"
+            v-html="selectedElement!.props.src"
+          />
+          <img
+            v-else
+            :src="selectedElement!.props.src"
+            class="ribbon-img-inner"
+            style="object-fit: contain"
+          />
+        </div>
+      </template>
+
+      <!-- Spacer + удаление (всегда справа, только при выборе) -->
+      <div style="flex: 1" />
+      <template v-if="hasSelection">
+        <span class="ribbon-field-name">{{ selectedElement!.dataField }}</span>
+        <v-tooltip text="Удалить элемент" location="bottom">
+          <template #activator="{ props: tp }">
+            <button
+              v-bind="tp"
+              class="rbn-btn rbn-btn--danger"
+              @click="store.removeElement(selectedId!)"
+            >
+              <v-icon size="15">mdi-delete-outline</v-icon>
+            </button>
+          </template>
+        </v-tooltip>
+      </template>
     </div>
   </div>
 </template>
+
+<style scoped>
+/* ══════════════════════════════════════════════════════════════════════════
+   Ribbon — фиксированная высота, всегда видима
+═══════════════════════════════════════════════════════════════════════════ */
+.ribbon-root {
+  width: 100%;
+  height: 46px; /* ФИКСИРОВАННАЯ высота — макет не прыгает */
+  flex-shrink: 0;
+  background: linear-gradient(180deg, #f8f8f8 0%, #eeeeee 100%);
+  border-bottom: 1px solid #c0c0c0;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.09);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 11px;
+  color: #2a2a2a;
+  user-select: none;
+  transition: opacity 0.15s;
+}
+/* В idle-состоянии слегка тусклее, но геометрия та же */
+.ribbon-root--idle {
+  opacity: 0.7;
+}
+
+.ribbon-row {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 10px;
+  gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.ribbon-row::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Подсказка в idle ───────────────────────────────────────────────────── */
+.ribbon-idle-hint {
+  font-size: 12px;
+  color: #b8b8b8;
+  font-style: italic;
+  padding-left: 6px;
+}
+
+/* ── Чип типа элемента ──────────────────────────────────────────────────── */
+.ribbon-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+  letter-spacing: 0.1px;
+}
+.ribbon-chip--text {
+  color: #1565c0;
+  background: #e8f0fe;
+}
+.ribbon-chip--barcode {
+  color: #e65100;
+  background: #fff3e0;
+}
+.ribbon-chip--image {
+  color: #2e7d32;
+  background: #e8f5e9;
+}
+
+/* ── Разделитель ────────────────────────────────────────────────────────── */
+.ribbon-sep {
+  width: 1px;
+  height: 26px;
+  background: #c4c4c4;
+  margin: 0 5px;
+  flex-shrink: 0;
+}
+
+/* ── Группа контролов ───────────────────────────────────────────────────── */
+.ribbon-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+/* ── Кнопка риббона ─────────────────────────────────────────────────────── */
+.rbn-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  color: #222;
+  line-height: 1;
+  transition:
+    background 0.1s,
+    border-color 0.1s,
+    color 0.1s;
+  outline: none;
+}
+.rbn-btn:hover {
+  background: #dce8f8;
+  border-color: #a8c4e0;
+}
+.rbn-btn--active {
+  background: #ccdff5;
+  border-color: #5a96cc;
+  color: #0d47a1;
+}
+.rbn-btn--active:hover {
+  background: #bad3f0;
+}
+.rbn-btn--danger:hover {
+  background: #fde8e8;
+  border-color: #f0b0b0;
+  color: #c62828;
+}
+
+/* ── Autocomplete шрифтов ───────────────────────────────────────────────── */
+.ribbon-font-select {
+  width: 172px;
+  flex-shrink: 0;
+}
+.ribbon-font-select :deep(.v-field) {
+  font-size: 12px;
+  height: 28px;
+  border-radius: 3px;
+  background: #fff;
+}
+.ribbon-font-select :deep(.v-field__input) {
+  padding-top: 2px;
+  padding-bottom: 2px;
+  min-height: unset;
+  font-size: 12px;
+}
+.ribbon-font-select :deep(.v-field__outline__start),
+.ribbon-font-select :deep(.v-field__outline__end),
+.ribbon-font-select :deep(.v-field__outline__notch) {
+  border-color: #bbb !important;
+}
+.ribbon-font-label {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+/* ── Спиннер ────────────────────────────────────────────────────────────── */
+.ribbon-spinbox {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  border: 1px solid #bbb;
+  border-radius: 3px;
+  background: #fff;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.ribbon-spinbox:focus-within {
+  border-color: #5a96cc;
+}
+.ribbon-spinbox-input {
+  flex: 1;
+  width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 0 3px 0 5px;
+  color: #222;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+.ribbon-spinbox-input::-webkit-inner-spin-button,
+.ribbon-spinbox-input::-webkit-outer-spin-button {
+  opacity: 0.35;
+  margin-right: 1px;
+}
+.ribbon-spinbox-unit {
+  font-size: 10px;
+  color: #999;
+  padding: 0 4px 0 1px;
+  white-space: nowrap;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+/* ── Текстовый инпут (barcode / image URL) ──────────────────────────────── */
+.ribbon-text-input {
+  height: 28px;
+  border: 1px solid #bbb;
+  border-radius: 3px;
+  background: #fff;
+  padding: 0 8px;
+  font-size: 12px;
+  font-family: inherit;
+  color: #222;
+  outline: none;
+  transition: border-color 0.1s;
+}
+.ribbon-text-input:focus {
+  border-color: #5a96cc;
+}
+.ribbon-text-input::placeholder {
+  color: #c0c0c0;
+}
+
+/* ── Имя поля ───────────────────────────────────────────────────────────── */
+.ribbon-field-name {
+  font-size: 10px;
+  color: #b0b0b0;
+  padding: 2px 6px;
+  font-family: 'Consolas', monospace;
+  white-space: nowrap;
+  background: #f0f0f0;
+  border: 1px solid #e0e0e0;
+  border-radius: 3px;
+}
+
+/* ── Превью изображения ─────────────────────────────────────────────────── */
+.ribbon-img-preview {
+  height: 34px;
+  width: 44px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  background: #fafafa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  margin: 0 4px;
+}
+.ribbon-img-inner {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* ── Попап редактирования текста ─────────────────────────────────────────── */
+.text-popup {
+  width: 280px;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+  border: 1px solid #d0d0d0;
+  overflow: hidden;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+.text-popup__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, #f0f4fb 0%, #e8eef8 100%);
+  border-bottom: 1px solid #d4ddf0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1565c0;
+}
+.text-popup__close {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  color: #888;
+  transition:
+    background 0.1s,
+    color 0.1s;
+}
+.text-popup__close:hover {
+  background: #fde8e8;
+  color: #c62828;
+}
+.text-popup__textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  min-height: 90px;
+  border: none;
+  outline: none;
+  resize: vertical;
+  font-size: 13px;
+  font-family: inherit;
+  color: #222;
+  line-height: 1.5;
+  background: #fff;
+}
+.text-popup__textarea::placeholder {
+  color: #ccc;
+}
+</style>

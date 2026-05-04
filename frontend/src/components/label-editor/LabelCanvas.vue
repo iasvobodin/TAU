@@ -117,20 +117,28 @@ function onResizeStop(id: string, xPx: number, yPx: number, wPx: number, hPx: nu
             class="element-content"
             :style="{
               fontSize: (elements[id]?.props.fontSize ?? 12) * zoom + 'px',
-              lineHeight: 1.2,
+              lineHeight: elements[id]?.props.lineHeight ?? 1.2,
               fontWeight: elements[id]?.props.bold ? 'bold' : 'normal',
               fontFamily: `'${elements[id]?.props.fontFamily ?? 'Arial'}'`,
+              alignItems:
+                elements[id]?.props.verticalAlign === 'top'
+                  ? 'flex-start'
+                  : elements[id]?.props.verticalAlign === 'bottom'
+                    ? 'flex-end'
+                    : 'center',
               justifyContent:
                 elements[id]?.props.align === 'center'
                   ? 'center'
                   : elements[id]?.props.align === 'right'
                     ? 'flex-end'
-                    : 'flex-start'
+                    : 'flex-start',
+              padding: `${(elements[id]?.props.paddingY ?? 0) * zoom}px ${(elements[id]?.props.paddingX ?? 4) * zoom}px`
             }"
           >
-            <!-- Span занимает всю ширину, text-align выравнивает текст внутри него.
-                 Без этого враппера justify-content позиционирует анонимный flex-элемент
-                 (текстовый узел) по центру вне зависимости от выбранного выравнивания. -->
+            <!--
+              span растягивается на всю ширину — text-align работает внутри него.
+              Без него justify-content позиционирует анонимный текстовый узел как единый блок.
+            -->
             <span
               :style="{
                 width: '100%',
@@ -218,7 +226,6 @@ function onResizeStop(id: string, xPx: number, yPx: number, wPx: number, hPx: nu
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 4px;
   word-break: break-word;
   overflow: hidden;
   pointer-events: none;
