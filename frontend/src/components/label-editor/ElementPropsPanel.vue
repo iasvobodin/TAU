@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { os, filesystem } from '@neutralinojs/lib'
 import { useLabelEditorStore } from '@/stores/labelEditor'
@@ -7,9 +7,38 @@ import { ensureFontFace } from '@/assets/renderToSVG'
 
 const store = useLabelEditorStore()
 const { selectedElement, selectedId, availableFonts, fontsLoading } = storeToRefs(store)
+const { splitDataField } = store // non-reactive helper — берём напрямую из store
 
 // ── Состояние попапа редактирования текста ────────────────────────────────
 const textPopupOpen = ref(false)
+
+// ── Инлайн-редактирование имени поля (dataField prefix) ───────────────────
+const renamingField = ref(false)
+const renameInput = ref('')
+
+function startRename() {
+  if (!selectedElement.value) return
+  const { prefix } = store.splitDataField(selectedElement.value.dataField)
+  renameInput.value = prefix
+  renamingField.value = true
+}
+
+function commitRename() {
+  if (selectedId.value && renameInput.value.trim()) {
+    store.renameField(selectedId.value, renameInput.value)
+  }
+  renamingField.value = false
+}
+
+function cancelRename() {
+  renamingField.value = false
+}
+
+// Авто-фокус на инпут при открытии
+const renameInputEl = ref<HTMLInputElement | null>(null)
+watch(renamingField, (v) => {
+  if (v) nextTick(() => renameInputEl.value?.select())
+})
 
 // ── Autocomplete шрифтов: отдельная search-модель + ref для blur ──────────
 // Без этого Vuetify оставляет строку поиска после выбора и не закрывает меню.
@@ -329,6 +358,32 @@ async function pickImageFile() {
 
         <div class="ribbon-sep" />
 
+        <!-- isSerial: флаг серийного номера -->
+        <div class="ribbon-group">
+          <v-tooltip
+            :text="
+              selectedElement!.props.isSerial
+                ? 'Убрать: серийный номер'
+                : 'Использовать как серийный номер'
+            "
+            location="bottom"
+          >
+            <template #activator="{ props: tp }">
+              <button
+                v-bind="tp"
+                :class="['rbn-btn', { 'rbn-btn--serial': selectedElement!.props.isSerial }]"
+                style="gap: 4px; padding: 0 8px; font-size: 11px"
+                @click="store.toggleSerial(selectedId!)"
+              >
+                <v-icon size="14">mdi-pound</v-icon>
+                <span>SN</span>
+              </button>
+            </template>
+          </v-tooltip>
+        </div>
+
+        <div class="ribbon-sep" />
+
         <!-- ── Редактировать текст: иконка → попап ─────────────────────── -->
         <v-menu
           v-model="textPopupOpen"
@@ -491,10 +546,40 @@ async function pickImageFile() {
         </div>
       </template>
 
-      <!-- Spacer + удаление (всегда справа, только при выборе) -->
+      <!-- Spacer + переименование + удаление (всегда справа, только при выборе) -->
       <div style="flex: 1" />
       <template v-if="hasSelection">
-        <span class="ribbon-field-name">{{ selectedElement!.dataField }}</span>
+        <!-- Инлайн-редактор имени поля -->
+        <div class="ribbon-rename-wrap" @keydown.esc="cancelRename">
+          <!-- Режим просмотра: клик на бейдж → редактирование -->
+          <v-tooltip v-if="!renamingField" text="Переименовать поле" location="bottom">
+            <template #activator="{ props: tp }">
+              <span
+                v-bind="tp"
+                class="ribbon-field-name ribbon-field-name--clickable"
+                @click="startRename"
+                >{{ selectedElement!.dataField }}</span
+              >
+            </template>
+          </v-tooltip>
+          <!-- Режим редактирования -->
+          <div v-else class="ribbon-rename-editor">
+            <input
+              ref="renameInputEl"
+              v-model="renameInput"
+              class="ribbon-rename-input"
+              @keydown.enter="commitRename"
+              @keydown.esc="cancelRename"
+              @blur="commitRename"
+            />
+            <span class="ribbon-rename-suffix">{{
+              splitDataField(selectedElement!.dataField).suffix
+            }}</span>
+          </div>
+        </div>
+
+        <div class="ribbon-sep" style="margin: 0 4px" />
+
         <v-tooltip text="Удалить элемент" location="bottom">
           <template #activator="{ props: tp }">
             <button
@@ -815,5 +900,63 @@ async function pickImageFile() {
 }
 .text-popup__textarea::placeholder {
   color: #ccc;
+}
+
+/* ── Serial-флаг ────────────────────────────────────────────────────────────── */
+.rbn-btn--serial {
+  background: #fff3e0;
+  border-color: #ffb74d;
+  color: #e65100;
+  font-weight: 600;
+}
+.rbn-btn--serial:hover {
+  background: #ffe0b2;
+  border-color: #fb8c00;
+}
+
+/* ── Инлайн-переименование поля ─────────────────────────────────────────────── */
+.ribbon-field-name--clickable {
+  cursor: pointer;
+  transition:
+    background 0.1s,
+    border-color 0.1s;
+}
+.ribbon-field-name--clickable:hover {
+  background: #e8eef8;
+  border-color: #aac4e8;
+  color: #1565c0;
+}
+.ribbon-rename-wrap {
+  display: flex;
+  align-items: center;
+}
+.ribbon-rename-editor {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  border: 1px solid #5a96cc;
+  border-radius: 3px;
+  background: #fff;
+  overflow: hidden;
+}
+.ribbon-rename-input {
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 11px;
+  font-family: 'Consolas', monospace;
+  padding: 0 4px;
+  color: #1565c0;
+  min-width: 60px;
+  max-width: 120px;
+}
+.ribbon-rename-suffix {
+  font-size: 11px;
+  font-family: 'Consolas', monospace;
+  color: #999;
+  padding: 0 5px 0 0;
+  white-space: nowrap;
+  pointer-events: none;
 }
 </style>

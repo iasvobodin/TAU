@@ -248,61 +248,26 @@ function renderTextPaths(opts: {
   w: number
   h: number
   align: 'left' | 'center' | 'right'
-  verticalAlign: 'top' | 'middle' | 'bottom'
   bold: boolean
-  lineHeight: number // множитель, напр. 1.2
-  paddingX: number // px
-  paddingY: number // px
 }): string {
-  const {
-    text,
-    font,
-    fontSizePx,
-    x,
-    y,
-    w,
-    h,
-    align,
-    verticalAlign,
-    lineHeight,
-    paddingX,
-    paddingY
-  } = opts
+  const { text, font, fontSizePx, x, y, w, h, align } = opts
   const xPx = x * MM_TO_PX
   const yPx = y * MM_TO_PX
   const wPx = w * MM_TO_PX
   const hPx = h * MM_TO_PX
-
-  // Доступная область после padding — зеркалит CSS flex padding
-  const availW = wPx - paddingX * 2
-  const availH = hPx - paddingY * 2
-
-  const lineH = fontSizePx * lineHeight
-  // Расстояние от baseline до верха глифа
+  const lineH = fontSizePx * 1.2
   const asc = (font.ascender / font.unitsPerEm) * fontSizePx
 
-  const lines = wrapText(font, text, fontSizePx, availW)
+  const lines = wrapText(font, text, fontSizePx, wPx - 8)
   const totalH = lines.length * lineH
-
-  // Позиция первого baseline — зеркалит CSS align-items
-  let startY: number
-  if (verticalAlign === 'top') {
-    startY = yPx + paddingY + asc
-  } else if (verticalAlign === 'bottom') {
-    startY = yPx + paddingY + availH - totalH + asc
-  } else {
-    // middle — центрируем блок текста в доступной высоте
-    startY = yPx + paddingY + (availH - totalH) / 2 + asc
-  }
+  const startY = yPx + (hPx - totalH) / 2 + asc
 
   return lines
     .map((ln, i) => {
       if (!ln.text) return ''
-      // Горизонтальная позиция — зеркалит CSS justify-content + text-align
-      let lx: number
-      if (align === 'center') lx = xPx + paddingX + (availW - ln.widthPx) / 2
-      else if (align === 'right') lx = xPx + paddingX + availW - ln.widthPx
-      else lx = xPx + paddingX
+      let lx = xPx + 4
+      if (align === 'center') lx = xPx + (wPx - ln.widthPx) / 2
+      if (align === 'right') lx = xPx + wPx - ln.widthPx - 4
       const ly = startY + i * lineH
       const svgStr = font.getPath(ln.text, lx, ly, fontSizePx).toSVG(2)
       const d = svgStr.match(/d="([^"]+)"/)?.[1]
@@ -400,14 +365,14 @@ function renderImageSVG(src: string, pos: ElementPosition): string {
 // ─── Резолвер значения поля ───────────────────────────────────────────────────
 
 function resolveValue(el: PrintLabelElement, data: CommonData, serial?: string): string {
-  if (el.type === 'barcode') {
-    return el.dataField.includes('serial') && serial
-      ? serial
-      : (data[el.dataField] ?? data[el.dataField.split('_')[0]] ?? '')
-  }
-  return data[el.dataField] ?? data[el.dataField.split('_')[0]] ?? ''
-}
+  if (el.props.isSerial && serial !== undefined) return serial
 
+  if (el.type === 'barcode') {
+    return serial ?? data['serial'] ?? data[el.dataField] ?? ''
+  }
+
+  return data[el.dataField] ?? ''
+}
 // ─── Одна этикетка → SVG строка ──────────────────────────────────────────────
 
 export async function renderLabelToSVG(
@@ -445,40 +410,24 @@ export async function renderLabelToSVG(
             w: pos.w,
             h: pos.h,
             align,
-            verticalAlign: el.props.verticalAlign ?? 'middle',
-            bold: el.props.bold ?? false,
-            lineHeight: el.props.lineHeight ?? 1.2,
-            paddingX: el.props.paddingX ?? 4,
-            paddingY: el.props.paddingY ?? 0
+            bold: el.props.bold ?? false
           })
         )
       } else {
         // Fallback — SVG <text> без конвертации в path
-        const paddingX = el.props.paddingX ?? 4
-        const paddingY = el.props.paddingY ?? 0
-        const hPx = pos.h * MM_TO_PX
-        const wPx = pos.w * MM_TO_PX
-        const vertAlign = el.props.verticalAlign ?? 'middle'
-        const baseY =
-          vertAlign === 'top'
-            ? pos.y * MM_TO_PX + paddingY + sizePx
-            : vertAlign === 'bottom'
-              ? pos.y * MM_TO_PX + hPx - paddingY
-              : pos.y * MM_TO_PX + hPx / 2
-        const domBase = vertAlign === 'top' ? 'hanging' : vertAlign === 'bottom' ? 'auto' : 'middle'
-        const xPx = pos.x * MM_TO_PX
-        const xLeft = (xPx + paddingX).toFixed(2)
-        const xCenter = (xPx + wPx / 2).toFixed(2)
-        const xRight = (xPx + wPx - paddingX).toFixed(2)
+        const xPx = (pos.x * MM_TO_PX + 4).toFixed(2)
+        const yPx = (pos.y * MM_TO_PX + (pos.h * MM_TO_PX) / 2).toFixed(2)
+        const cxPx = (pos.x * MM_TO_PX + (pos.w * MM_TO_PX) / 2).toFixed(2)
+        const rxPx = (pos.x * MM_TO_PX + pos.w * MM_TO_PX - 4).toFixed(2)
         const anchor = align === 'center' ? 'middle' : align === 'right' ? 'end' : 'start'
-        const tx = align === 'center' ? xCenter : align === 'right' ? xRight : xLeft
+        const tx = align === 'center' ? cxPx : align === 'right' ? rxPx : xPx
         const safe = (fieldValue || ' ')
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;')
-        parts.push(`<text x="${tx}" y="${baseY.toFixed(2)}" font-family="${family}" font-size="${sizePx}"
+        parts.push(`<text x="${tx}" y="${yPx}" font-family="${family}" font-size="${sizePx}"
           font-weight="${el.props.bold ? 'bold' : 'normal'}" text-anchor="${anchor}"
-          dominant-baseline="${domBase}" fill="#000">${safe}</text>`)
+          dominant-baseline="middle" fill="#000">${safe}</text>`)
       }
     } else if (el.type === 'barcode') {
       const val = resolveValue(el, data, serial)

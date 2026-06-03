@@ -68,13 +68,17 @@ export class LabelPrinterMulty {
   // ── Field value resolver ───────────────────────────────────────────────────
 
   private resolveFieldValue(element: PrintLabelElement, data: CommonData, serial?: string): string {
+    if (element.props.isSerial && serial !== undefined) return serial
+
     if (element.type === 'barcode') {
-      if (element.dataField.includes('serial') && serial) return serial
-      return data[element.dataField] ?? data[element.dataField.split('_')[0]] ?? ''
+      // Barcode всегда кодирует серийный номер
+      return serial ?? data['serial'] ?? data[element.dataField] ?? ''
     }
+
     if (element.type === 'text') {
-      return data[element.dataField] ?? data[element.dataField.split('_')[0]] ?? ''
+      return data[element.dataField] ?? ''
     }
+
     return ''
   }
 
@@ -93,7 +97,7 @@ export class LabelPrinterMulty {
     const heightMM = labelSize.unit === 'mm' ? labelSize.height : labelSize.height / MM_TO_PX
 
     let elementsHTML = ''
-
+    console.log('templateData elements:', templateData.elements)
     for (const [id, element] of Object.entries(elements)) {
       const pos = positions[id]
       if (!pos) continue
@@ -113,13 +117,6 @@ export class LabelPrinterMulty {
 
       if (element.type === 'text') {
         const fieldValue = this.resolveFieldValue(element, data, serial)
-        const lineHeight = element.props.lineHeight ?? 1.2
-        const vertAlign = element.props.verticalAlign ?? 'middle'
-        const pX = element.props.paddingX ?? 4
-        const pY = element.props.paddingY ?? 0
-
-        const alignItems =
-          vertAlign === 'top' ? 'flex-start' : vertAlign === 'bottom' ? 'flex-end' : 'center'
         const justifyContent =
           element.props.align === 'center'
             ? 'center'
@@ -132,21 +129,24 @@ export class LabelPrinterMulty {
           ';' +
           [
             `font-size:${element.props.fontSize ?? 12}px`,
-            `line-height:${lineHeight}`,
+            `line-height:1.2`,
             `font-weight:${element.props.bold ? 'bold' : 'normal'}`,
             `font-family:'${element.props.fontFamily ?? 'Arial'}'`,
+            `text-align:${element.props.align ?? 'left'}`,
             `display:flex`,
-            `align-items:${alignItems}`,
+            `align-items:center`,
             `justify-content:${justifyContent}`,
-            `padding:${pY}px ${pX}px`,
+            `padding:4px`,
             `word-break:break-word`
           ].join(';')
 
-        // span растягивается на всю ширину — text-align работает внутри flex-контейнера
-        const spanStyle = `width:100%;text-align:${element.props.align ?? 'left'};word-break:break-word;overflow:hidden`
-        elementsHTML += `<div style="${style}"><span style="${spanStyle}">${fieldValue || ' '}</span></div>`
+        elementsHTML += `<div style="${style}">${fieldValue || ' '}</div>`
       } else if (element.type === 'barcode') {
         const fieldValue = this.resolveFieldValue(element, data, serial)
+        // ВРЕМЕННО:
+        // console.log('barcode element:', element)
+        // console.log('data:', data)
+        // console.log('resolved fieldValue:', fieldValue)
         let barcodeImage = ''
         if (fieldValue) {
           barcodeImage =
