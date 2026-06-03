@@ -6,12 +6,32 @@ export default function defectHistoryRoutes(app: FastifyInstance) {
     app,
     modelName: "defectHistory",
     path: "/defect-history",
-    uniqueKey: "componentSN",
+    uniqueKey: "id",
   });
 
   app.get("/defect-history-all", async (request, reply) => {
     try {
       const defectHistory = await app.prisma.defectHistory.findMany({
+        include: {
+          component: {
+            include: {
+              pnComponent: true,
+            },
+          },
+        },
+      });
+      reply.send(defectHistory);
+    } catch (error) {
+      console.log(error);
+      reply.code(500).send({ error: "Internal Server Error" });
+    }
+  });
+
+  app.get("/defect-history-component/:componentSN", async (request, reply) => {
+    try {
+      const { componentSN } = request.params as { componentSN: string };
+      const defectHistory = await app.prisma.defectHistory.findMany({
+        where: { componentSN },
         include: {
           component: {
             include: {

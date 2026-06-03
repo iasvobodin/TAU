@@ -14,8 +14,6 @@ export const createCheckList = async (
 }
 
 export const fetchCheckList = async (productMP: string): Promise<ApiResponse<CheckList>> => {
-  console.log(API_URL, 'API_URL')
-
   return get<CheckList>(`${API_URL}/check-list/${productMP}`)
 }
 

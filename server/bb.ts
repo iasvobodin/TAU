@@ -47,7 +47,10 @@ async function backupDatabase() {
     };
 
     // Записываем в файл с форматированием
-    await fs.writeFile("prisma-backup.json", JSON.stringify(data, null, 2));
+    await fs.writeFile(
+      "prisma-backup 02.06.2026.json",
+      JSON.stringify(data, null, 2),
+    );
 
     console.log("✅ Бэкап сохранён в prisma-backup.json");
   } catch (error) {

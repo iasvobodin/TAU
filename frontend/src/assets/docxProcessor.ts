@@ -224,6 +224,19 @@ async function patchDocx(fileData: ArrayBuffer, serialNumber: string): Promise<A
       currentdate: {
         type: PatchType.PARAGRAPH,
         children: [new TextRun(getCurrentMonthYear())]
+      },
+      ProdName: {
+        type: PatchType.PARAGRAPH,
+        children: [new TextRun(`ООО «Метран Проект».`)]
+      },
+      ProdAddress: {
+        type: PatchType.PARAGRAPH,
+        children: [
+          new TextRun(
+            `454103, Российская Федерация, Челябинская область, г. Челябинск,\n 
+            пр-кт. Новоградский, д. 15, стр.1, Тел. +7 (351) 240 88 82.`
+          )
+        ]
       }
     }
     return await patchDocument({
@@ -365,21 +378,59 @@ async function safelyConvert(partNumber: string, serialNumber: string): Promise<
   }
 }
 
-export async function printPassport(partNumber: string, serialNumber: string): Promise<boolean> {
-  try {
-    const alreadyConverted = await checkIfPdfExists(partNumber, serialNumber)
-    if (alreadyConverted) return true
+// export async function printPassport(partNumber: string, serialNumber: string): Promise<boolean> {
+//   try {
+//     const alreadyConverted = await checkIfPdfExists(partNumber, serialNumber)
+//     if (alreadyConverted) return true
 
+//     const passport = await findFileInDirectory(partNumber, CONFIG.passportDir)
+//     if (!passport) {
+//       console.warn(`Паспорт для "${partNumber}" не найден`)
+//       return false
+//     }
+
+//     const processed = await safelyProcessPassport(partNumber, serialNumber, passport.path)
+//     if (!processed) return false
+
+//     const converted = await safelyConvert(partNumber, serialNumber)
+//     if (!converted) return false
+
+//     return true
+//   } catch (error) {
+//     console.error('🚨 Непредвиденная ошибка при печати паспорта:', error)
+//     return false
+//   }
+// }
+
+function normalizeSerials(serial: string | string[]): string[] {
+  return Array.isArray(serial) ? serial : [serial]
+}
+
+export async function printPassport(
+  partNumber: string,
+  serial: string | string[]
+): Promise<boolean> {
+  const serialNumbers = normalizeSerials(serial)
+
+  try {
     const passport = await findFileInDirectory(partNumber, CONFIG.passportDir)
+
     if (!passport) {
       console.warn(`Паспорт для "${partNumber}" не найден`)
       return false
     }
 
-    const processed = await safelyProcessPassport(partNumber, serialNumber, passport.path)
-    if (!processed) return false
+    // 👉 1. Патчим все docx
+    for (const sn of serialNumbers) {
+      const alreadyConverted = await checkIfPdfExists(partNumber, sn)
+      if (alreadyConverted) continue
 
-    const converted = await safelyConvert(partNumber, serialNumber)
+      const processed = await safelyProcessPassport(partNumber, sn, passport.path)
+      if (!processed) return false
+    }
+
+    // 👉 2. Один запуск конвертации (важно!)
+    const converted = await safelyConvert(partNumber, serialNumbers[0])
     if (!converted) return false
 
     return true

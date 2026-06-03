@@ -90,8 +90,48 @@ export function registerRoutes(app: FastifyInstance) {
 
     console.log(JSON.stringify({ type: "auth_code", code, userId }));
 
-    reply
-      .type("text/html; charset=utf-8")
-      .send("<h1>Авторизация прошла успешно. Можете закрыть это окно.</h1>");
+    reply.type("text/html; charset=utf-8").send(`
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Авторизация</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .message-box {
+      background: white;
+      padding: 2rem 3rem;
+      border-radius: 12px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+      text-align: center;
+      max-width: 400px;
+      animation: fadeIn 0.8s ease-out;
+    }
+    h1 {
+      font-size: 1.5rem;
+      color: #333;
+      margin: 0;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="message-box">
+    <h1>Авторизация прошла успешно.<br>Можете закрыть это окно.</h1>
+  </div>
+</body>
+</html>
+`);
   });
 }

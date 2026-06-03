@@ -154,33 +154,33 @@ const totalUnfinishedOperations = computed(() => {
   return count
 })
 
-// const getProducts = async () =>{
-
-// }
-// getProducts()
-onMounted(async () => {
+const checkOperations = async (dry: boolean = true) => {
   const result = await fetchAllProduct()
   console.log(result.data)
 
-  //  try {
-  //  await processMissingOperations(result.data!, false)
-  //  console.log('allDone');
+  try {
+    await processMissingOperations(result.data!, dry)
+    console.log('allDone')
+  } catch (error) {
+    console.log(error)
+  }
+}
 
-  //  } catch (error) {
-  //   console.log(error);
-
-  //  }
-})
+onMounted(async () => {})
 </script>
 
 <template>
   <v-container>
     <v-row class="mb-6">
-      <h1>Прверка заказа на производство перед передачей на склад</h1>
+      <h2>Прверка заказа на производство перед передачей на склад</h2>
       <br />
     </v-row>
+    <v-row class="mb-4">
+      <v-btn block @click="checkOperations(true)">Проверка операций по всем ордерам</v-btn>
+    </v-row>
+
     <v-row align="center" justify="center">
-      <v-col> <h2>Введите номер заказа на производство</h2></v-col>
+      <v-col> <h3>Введите номер заказа на производство</h3></v-col>
       <v-col>
         <v-text-field
           ref="serialNumberInput"

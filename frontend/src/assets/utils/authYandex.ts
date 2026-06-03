@@ -87,7 +87,7 @@ async function base64url(buffer: ArrayBuffer): Promise<string> {
 async function generateCodeChallenge(codeVerifier: string): Promise<string> {
   const encoder = new TextEncoder()
   const data = encoder.encode(codeVerifier) // data: Uint8Array
-  const digest = await crypto.subtle.digest('SHA-256', data.buffer)
+  const digest = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer)
   // ⬆️ используем .buffer (ArrayBuffer), который digest точно принимает
   return base64url(digest)
 }

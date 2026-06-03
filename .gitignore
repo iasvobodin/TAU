@@ -32,3 +32,6 @@ frontend/public/remixed-717562b1.html
 frontend/public/sv.html
 server/server.exe
 replacements.txt
+server/prisma-backup 02.06.2026.json
+server/prisma-backup 20.10.json
+server/CHIR.ts

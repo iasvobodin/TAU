@@ -21,6 +21,7 @@
     "window.*",
     "server.*",
     "resources.*",
+    "computer.*",
     "filesystem.*",
     "events.*",
     "extensions.*",

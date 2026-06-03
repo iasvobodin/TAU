@@ -12,6 +12,7 @@ import type {
 } from '@/assets/interfaces'
 import { fetchDefectHistory, fetchDefectHistoryAll } from '@/api/defectHistoryServices'
 import DefectWorkflow from '../DefectWorkflow.vue'
+import DefectTable from '../DefectsTable.vue'
 import { defectWorkflowMap, type DefectStage } from '@/assets/interfaces'
 
 const failedComponents: Ref<DefectHistoryWithTypedAction[] | null> = ref(null)
@@ -221,12 +222,84 @@ async function processItems() {
   console.log(uniqueItems)
 }
 
+type CleanupOptions = {
+  dryRun?: boolean
+}
+
+async function cleanupDuplicateDefects(
+  items: DefectHistoryWithTypedAction[],
+  options: CleanupOptions = { dryRun: true }
+): Promise<void> {
+  const { dryRun = true } = options
+
+  const grouped = new Map<string, DefectHistoryWithTypedAction[]>()
+
+  // ✅ Группировка по componentSN + actionType + description
+  for (const item of items) {
+    const normalizedDescription = (item.description ?? '').trim().toLowerCase()
+
+    const key = `${item.componentSN}__${item.actionType}__${normalizedDescription}`
+
+    if (!grouped.has(key)) {
+      grouped.set(key, [])
+    }
+
+    grouped.get(key)!.push(item)
+  }
+
+  let totalDuplicates = 0
+
+  console.log('=== Проверка на дубликаты ===\n')
+
+  for (const [key, group] of grouped.entries()) {
+    if (group.length <= 1) continue
+
+    // сортируем копию массива
+    const sorted = [...group].sort(
+      (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    )
+
+    const original = sorted[0]
+    const originalId = original.id
+
+    const duplicates = sorted.filter((item) => item.id !== originalId)
+
+    if (duplicates.length === 0) continue
+
+    totalDuplicates += duplicates.length
+
+    console.log(`🔁 Найдены дубликаты для ключа: ${key}`)
+    console.log(
+      `Оставляем ID ${original.id} SN ${original.component?.snComponent} (${original.description} ___ ${original.actionType})`
+    )
+
+    duplicates.forEach((dup) => {
+      console.log(
+        `   Дубликат -> ID ${dup.id} SN ${dup.component?.snComponent} (${dup.description} ___ ${dup.actionType})`
+      )
+    })
+
+    if (!dryRun) {
+      for (const dup of duplicates) {
+        await deleteDefectHistory(+dup.id)
+      }
+    }
+
+    console.log('')
+  }
+
+  console.log('=== Итог ===')
+  console.log(`Всего найдено дубликатов: ${totalDuplicates}`)
+  console.log(dryRun ? 'Режим dryRun — удаление НЕ выполнялось.' : 'Удаление выполнено.')
+}
+
 onMounted(async () => {
   await getFailedHistory()
   console.log(failedComponents.value)
+  // cleanupDuplicateDefects(failedComponents.value!, { dryRun: false })
 
-  const uniqueItems = removeDuplicates(failedComponents.value!)
-  console.log('unic', uniqueItems)
+  // const uniqueItems = removeDuplicates(failedComponents.value!)
+  // console.log('unic', uniqueItems)
 
   // Запуск обработки
   // processItems();
@@ -237,7 +310,7 @@ onMounted(async () => {
   <v-container class="defect-container">
     <v-row>
       <v-col cols="3" v-if="showWorkflow">
-        <DefectWorkflow />
+        <!-- <DefectWorkflow /> -->
       </v-col>
       <v-col align-self="start">
         <v-row>
@@ -262,8 +335,10 @@ onMounted(async () => {
           </v-col>
         </v-row>
         <br /><br />
-
-        <v-expansion-panels>
+        <template v-if="failedComponents">
+          <DefectTable :failed-components="failedComponents" />
+        </template>
+        <!-- <v-expansion-panels>
           <v-expansion-panel
             :color="defectWorkflowByActionType[group[0]?.actionType]?.color || '#000000'"
             v-for="(group, sn) in groupedBySN"
@@ -303,7 +378,7 @@ onMounted(async () => {
               </v-row>
             </v-expansion-panel-text>
           </v-expansion-panel>
-        </v-expansion-panels>
+        </v-expansion-panels> -->
       </v-col>
     </v-row>
   </v-container>

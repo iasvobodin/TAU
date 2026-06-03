@@ -3,40 +3,98 @@ export type BarcodeType = 'code128' | 'datamatrix'
 export type DataField = string
 export type Unit = 'mm' | 'px'
 
-// ─── Абстрактная позиция элемента в мм ───────────────────────────────────────
-// Единственный формат позиции во всём приложении.
-// Канвас-компонент конвертирует мм↔px сам, store и принтер про px не знают.
+// ─── Позиция элемента в мм ────────────────────────────────────────────────────
 export interface ElementPosition {
-  x: number // мм от левого края этикетки
-  y: number // мм от верхнего края
+  x: number // мм от левого края поля печати
+  y: number // мм от верхнего края поля печати
   w: number // ширина в мм
   h: number // высота в мм
 }
 
+// ─── Текстовые параметры для рендерера ───────────────────────────────────────
+// Единый объект, который принимают ОБА рендерера (HTML и SVG).
+// Все отступы — в мм; рендерер сам конвертирует в px/units.
+export interface TextRenderProps {
+  fontSize: number
+  fontFamily: string
+  bold: boolean
+  align: 'left' | 'center' | 'right'
+  verticalAlign: 'top' | 'middle' | 'bottom'
+  lineHeight: number
+  paddingTop: number // мм
+  paddingRight: number // мм
+  paddingBottom: number // мм
+  paddingLeft: number // мм
+}
+
+const _MM_TO_PX = 3.78
+
+/**
+ * Преобразует сырые props элемента в нормализованный TextRenderProps.
+ * Поддерживает миграцию со старых полей paddingX/paddingY (px → мм).
+ */
+export function resolveTextProps(props: LabelElementProps): TextRenderProps {
+  // Миграция: старые paddingX/paddingY были в пикселях
+  const legacyPX = props.paddingX != null ? props.paddingX / _MM_TO_PX : 1.0
+  const legacyPY = props.paddingY != null ? props.paddingY / _MM_TO_PX : 0.0
+  return {
+    fontSize: props.fontSize ?? 12,
+    fontFamily: props.fontFamily ?? 'Arial',
+    bold: props.bold ?? false,
+    align: props.align ?? 'left',
+    verticalAlign: props.verticalAlign ?? 'middle',
+    lineHeight: props.lineHeight ?? 1.2,
+    paddingTop: props.paddingTop ?? legacyPY,
+    paddingRight: props.paddingRight ?? legacyPX,
+    paddingBottom: props.paddingBottom ?? legacyPY,
+    paddingLeft: props.paddingLeft ?? legacyPX
+  }
+}
+
+// ─── Свойства элемента ────────────────────────────────────────────────────────
 export interface LabelElementProps {
-  // Text
+  // ── Текст ──────────────────────────────────────────────────────────────────
   fontSize?: number
   bold?: boolean
   align?: 'left' | 'center' | 'right'
   verticalAlign?: 'top' | 'middle' | 'bottom'
   fontFamily?: string
-  lineHeight?: number // множитель межстрочного интервала, напр. 1.2
-  paddingX?: number // горизонтальный отступ в px
-  paddingY?: number // вертикальный отступ в px
+  lineHeight?: number // множитель межстрочного интервала
 
-  // Barcode
+  // Отступы внутри блока в мм, все 4 стороны
+  paddingTop?: number
+  paddingRight?: number
+  paddingBottom?: number
+  paddingLeft?: number
+
+  /**
+   * @deprecated Только для миграции старых шаблонов (значение в px).
+   * Используйте paddingLeft / paddingRight.
+   */
+  paddingX?: number
+  /**
+   * @deprecated Только для миграции старых шаблонов (значение в px).
+   * Используйте paddingTop / paddingBottom.
+   */
+  paddingY?: number
+
+  // isSerial: ровно один элемент (text или barcode) используется как
+  // серийный номер при пакетной печати.
+  isSerial?: boolean
+
+  // ── Штрихкод ───────────────────────────────────────────────────────────────
   barcodeType?: BarcodeType
   barcodeHeight?: number
   barcodeWidth?: number
   barcodeScale?: number
   testValue?: string
 
-  // Image
+  // ── Изображение ────────────────────────────────────────────────────────────
   src?: string
   imageWidth?: number
   imageHeight?: string
 
-  // Editor-only visual state (не сохраняется в шаблон)
+  // ── Editor-only (не сохраняется в шаблон) ──────────────────────────────────
   customText?: string | null
 }
 
@@ -54,15 +112,17 @@ export interface LabelSize {
 }
 
 export interface FieldCounters {
-  serial: number
-  partNumber: number
-  description: number
-  manufacturer: number
-  custom: number
+  text: number
+  barcode: number
+  image: number
 }
 
 // ─── Формат шаблона (сохраняется в JSON) ─────────────────────────────────────
-type SavedElementProps = Omit<LabelElementProps, 'customText' | 'testValue'>
+// Исключаем editor-only поля и устаревшие paddingX/paddingY.
+type SavedElementProps = Omit<
+  LabelElementProps,
+  'customText' | 'testValue' | 'paddingX' | 'paddingY'
+>
 
 export interface TemplateData {
   positions: Record<string, ElementPosition>
@@ -70,12 +130,13 @@ export interface TemplateData {
   labelSize: LabelSize
 }
 
-// ─── Формат для принтера ──────────────────────────────────────────────────────
+// ─── Формат для рендереров (печать) ──────────────────────────────────────────
+// Включает paddingX/paddingY для обратной совместимости при загрузке старых шаблонов.
 export interface PrintLabelElement {
   id: string
   type: ElementType
   dataField: DataField
-  props: SavedElementProps
+  props: SavedElementProps & { paddingX?: number; paddingY?: number }
 }
 
 export interface PrintTemplateData {

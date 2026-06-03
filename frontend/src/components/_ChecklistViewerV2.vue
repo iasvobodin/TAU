@@ -335,8 +335,8 @@ onBeforeUnmount(() => {
 
             <!-- Карточка -->
             <v-card class="pa-4">
-              <v-card-title class="text-h6 text-center">
-                <b> {{ template.fields[currentCardIndex].name }}</b>
+              <v-card-title class="text-h6 text-left" style="white-space: normal">
+                {{ template.fields[currentCardIndex].name }}
               </v-card-title>
 
               <v-card-text>

@@ -1,38 +1,37 @@
 <script setup lang="ts">
-import { shallowRef, ref } from 'vue'
-import InputControl from './views/InputControl.vue'
-import PreProduction from './views/PreProduction.vue'
-import AssemblyView from './views/AssemblyView.vue'
-import DevView from './views/DevView.vue'
+import { shallowRef, watch } from 'vue'
 import { useCounterStore } from '@/stores/counter'
+import { useNavigationStore } from '@/stores/navigation'
+import { views } from '@/assets/interfaces'
+
+// import InputControl from './views/InputControl.vue'
+// import PreProduction from './views/PreProduction.vue'
+// import AssemblyView from './views/AssemblyView.vue'
+// import DevView from './views/DevView.vue'
 
 const counterStore = useCounterStore()
-const current = shallowRef(InputControl)
-const tab = ref(null)
-const isDev = import.meta.env.MODE === 'development'
-const bgColor = isDev ? 'red' : 'primary'
-console.log(isDev, bgColor, 'isDev')
+const nav = useNavigationStore()
+
+const current = shallowRef(views[nav.current])
+const bgColor = import.meta.env.MODE === 'development' ? 'red' : 'primary'
+
+watch(
+  () => nav.current,
+  (newVal) => {
+    current.value = views[newVal]
+  }
+)
 </script>
 
 <template>
-  <v-tabs align-tabs="title" v-model="current" :bg-color="bgColor">
-    <v-tab :value="InputControl">Входной контроль</v-tab>
-    <v-tab :value="PreProduction">Подготовка производства</v-tab>
-    <v-tab :value="AssemblyView">Производство</v-tab>
-    <v-tab v-if="counterStore.adminView" :value="DevView">Администрирование</v-tab>
+  <v-tabs v-model="current" :bg-color="bgColor" align-tabs="title">
+    <v-tab :value="views.InputControl">Входной контроль</v-tab>
+    <v-tab :value="views.PreProduction">Подготовка производства</v-tab>
+    <v-tab :value="views.AssemblyView">Производство</v-tab>
+    <v-tab v-if="counterStore.adminView" :value="views.DevView">Администрирование</v-tab>
   </v-tabs>
+
   <div class="container">
-    <!-- <KeepAlive> -->
-    <component :is="current"></component>
-    <!-- </KeepAlive> -->
+    <component :is="current" :payload="nav.payload" />
   </div>
 </template>
-
-<style>
-.container {
-  display: grid;
-  margin: auto;
-  margin-top: 3vh;
-  width: 95vw;
-}
-</style>

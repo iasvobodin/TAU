@@ -13,8 +13,12 @@ export const usePartNumberComponents = defineStore('partNumberComponents', {
   },
   actions: {
     async getPartNumberComponents() {
-      const result = await getPNComponents()
-      this.partNumberComponents = result.data
+      try {
+        const result = await getPNComponents()
+        this.partNumberComponents = result.data
+      } catch (error) {
+        console.log(error)
+      }
     }
   }
 })

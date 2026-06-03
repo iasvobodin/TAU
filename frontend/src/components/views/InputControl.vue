@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, type Ref } from 'vue'
+import { ref, watch, type Ref } from 'vue'
 import AddArticle from './AddArticle.vue'
 import type { SerialNumberData } from '@/assets/interfaces'
 import { useUserStore } from '@/stores/user'
@@ -7,6 +7,17 @@ import { useSerialNumberStore } from '../../stores/serialNumberStore'
 import { createDefectHistory } from '@/api/defectHistoryServices'
 import { createComponents } from '@/api/componentServices'
 import { openFileFromNet } from '@/assets/utils/openFileFromNet'
+
+const props = defineProps<{ payload: Record<string, any> }>()
+
+watch(
+  () => props.payload,
+  (p) => {
+    if (p.sn) {
+    }
+  },
+  { immediate: true }
+)
 
 const OK_PATH = import.meta.env.VITE_OK_PATH as string
 const supplier = ref('')
@@ -137,7 +148,7 @@ const endTask = () => {
           hide-details="auto"
           :clearable="true"
           label="Поставщик"
-          :items="['Amvaje abi', 'Другой поставщик']"
+          :items="['Amvaje abi', 'Волна', 'Другой поставщик']"
           variant="solo"
         ></v-select>
       </v-col>
@@ -145,6 +156,7 @@ const endTask = () => {
   </v-container>
 
   <AddArticle :invoice :supplier @some-event="AddArticleEmit" />
+  <!-- <ComponentEditor/> -->
   <v-container class="text-center" v-if="sendingStatus">{{ sendingStatus }}</v-container>
   <!-- <v-container class="text-center">
     <v-row justify="center">

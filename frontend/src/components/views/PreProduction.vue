@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, onMounted, type Ref } from 'vue'
+import { reactive, watch, ref, onMounted, type Ref } from 'vue'
 
 import { genSN } from '@/assets/generateSN'
 import { createDocWithBarcodes } from '@/assets/barcodeGenerator'
@@ -17,6 +17,17 @@ import {
 } from '@/api/productServices'
 import { server, filesystem, os, events, window as neuWindow } from '@neutralinojs/lib'
 // import type { Sp } from '@/assets/interfaces'
+
+const props = defineProps<{ payload: Record<string, any> }>()
+
+watch(
+  () => props.payload,
+  (p) => {
+    if (p.sn) {
+    }
+  },
+  { immediate: true }
+)
 
 const specification_qty = ref('')
 const allMatch = ref(false)
@@ -108,7 +119,8 @@ const printLabel = async () => {
     } else {
       errorStore.addError('В данном З.Н.П. количество модулей не совпадает!')
       setTimeout(errorStore.removeError, 5000)
-      clearState()
+      updateTableData(specification)
+      // clearState()
     }
   }
 }
@@ -253,6 +265,7 @@ const updateTableData = (spec: Sp) => {
 // Проверка серийного номера (заглушка для вашей реализации)
 async function validateSerialNumber(serial: string): Promise<boolean> {
   const result = await fetchComponent(serial)
+  console.log(result.data)
   if (!result.data) {
     //сбрасываем
     // errorStore.addError(`Данный компонент забракован`)

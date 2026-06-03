@@ -36,6 +36,18 @@ const failedComponents: Ref<string[]> = ref([])
 const component: Ref<Component | null> = ref(null)
 const errorStore = useErrorStore()
 const stageType: StageType = 'functionalTest'
+const startTime: Ref<string | null> = ref(new Date().toISOString())
+
+onMounted(() => {
+  tryToGetLocalCecklist()
+
+  // // 1. Создаем объект Date (текущий момент времени)
+  // const now = new Date();
+
+  // // 2. Используем .toISOString() для преобразования его в нужный формат строки
+  // startTime.value = now.toISOString();
+  console.log(startTime.value)
+})
 
 watch(failedComponents, (e) => {
   console.log(e, productionOperationAlarm.value)
@@ -63,22 +75,26 @@ watch(defectDialog, () => {
 
 const testPassed = async () => {
   //создаём одну хорошую операцию
-  const productionOperatioData: Prisma.ProductionOperationUncheckedCreateInput = {
-    stageType,
-    status: 'passed',
-    user: useUserStore().userFullName,
-    productId: props.product.snProduct,
-    usedComponents: props.product.productSerialNumbers.join(', '),
-    checkList: checkList.value
-  }
-  console.log(productionOperatioData, 'productionOperatioData')
+  if (startTime.value) {
+    const productionOperatioData: Prisma.ProductionOperationUncheckedCreateInput = {
+      stageType,
+      status: 'passed',
+      user: useUserStore().userFullName,
+      productId: props.product.snProduct,
+      usedComponents: props.product.productSerialNumbers.join(', '),
+      checkList: checkList.value,
+      startTime: startTime.value, // ✅ Используется время, засеченное в onMounted
+      endTime: new Date().toISOString()
+    }
+    console.log(productionOperatioData, 'productionOperatioData')
 
-  const resultCreate = await createProductionOperationPassed(productionOperatioData)
-  console.log(resultCreate, 'resultCreate')
+    const resultCreate = await createProductionOperationPassed(productionOperatioData)
+    console.log(resultCreate, 'resultCreate')
 
-  //если оштбка с сервера не продолжаем!
-  if (resultCreate.error) {
-    return
+    //если оштбка с сервера не продолжаем!
+    if (resultCreate.error) {
+      return
+    }
   }
   //ничего привязывать не надо просто выходим
   emit('done')
@@ -183,32 +199,57 @@ function fillServerTemplateFromStrings(
   localCheckListStr: string,
   serverCheckListStr: string
 ): string {
+  // Умный санитизатор, который лечит кавычки ТОЛЬКО внутри "comment":"..."
+  const sanitizeJsonStr = (str: string): string => {
+    if (!str) return str
+
+    try {
+      // Шаг 1: Ищем блоки "comment":"..." или "comment":""...""
+      return str.replace(/"comment"\s*:\s*"(.*?)"\s*([,}\]])/g, (match, commentValue, nextChar) => {
+        // Если внутри комментария есть грязь вроде "" или незаэкранированные кавычки
+        if (commentValue.includes('"')) {
+          // Очищаем: убираем дубликаты кавычек, оставляем просто текст
+          let cleanComment = commentValue
+            .replace(/^"+|"+$/g, '') // Срезаем кавычки на границах самого значения
+            .replace(/"/g, "'") // Все внутренние кавычки превращаем в безопасные одинарные
+
+          return `"comment":"${cleanComment}"${nextChar}`
+        }
+        return match
+      })
+    } catch (e) {
+      return str // Если регулярка почему-то споткнулась, возвращаем оригинал
+    }
+  }
+
   try {
-    // Парсим входные JSON строки
-    const localCheckList = JSON.parse(localCheckListStr)
-    const serverCheckList = JSON.parse(serverCheckListStr)
+    // Аккуратно лечим строки
+    const cleanLocalStr = sanitizeJsonStr(localCheckListStr)
+    const cleanServerStr = sanitizeJsonStr(serverCheckListStr)
 
-    // Создаем карту для быстрого поиска локальных значений по имени поля
+    const localCheckList = JSON.parse(cleanLocalStr)
+    const serverCheckList = JSON.parse(cleanServerStr)
+
     const localFieldMap = new Map()
-    localCheckList.fields.forEach((field: any) => {
-      localFieldMap.set(field.name, field)
-    })
+    if (localCheckList?.fields) {
+      localCheckList.fields.forEach((field: any) => {
+        localFieldMap.set(field.name, field)
+      })
+    }
 
-    // Заполняем серверный шаблон
     const filledTemplate = {
-      title: serverCheckList.title,
-      fields: serverCheckList.fields.map((serverField: any) => {
+      title: serverCheckList?.title || '',
+      fields: (serverCheckList?.fields || []).map((serverField: any) => {
         const localField = localFieldMap.get(serverField.name)
 
         if (localField) {
           return {
-            ...serverField, // сохраняем все свойства серверного поля
+            ...serverField,
             status: localField.status || null,
             comment: localField.comment || ''
           }
         }
 
-        // Если локального поля нет, возвращаем серверное поле без изменений
         return serverField
       })
     }
@@ -225,6 +266,9 @@ const finalcheckListTemplate = ref('')
 const tryToGetLocalCecklist = async () => {
   try {
     const serverCheckList = props.product.checkList?.checkListTemplate!
+
+    console.log('СЕРВЕРНЫЙ ЧЕКЛИСТ!!!!!!!!!!!!!!', serverCheckList)
+
     const localCheckList = await storage.getData(
       `checkList_${props.information?.['Инв. № изделия']}`
     )
@@ -234,7 +278,6 @@ const tryToGetLocalCecklist = async () => {
     console.log(error)
   }
 }
-tryToGetLocalCecklist()
 const hasProdductionOperation = (stageType: string) => {
   //ищем по ключу наличие производственных операций
   const stage = props.product.productionOperations.some((e) => e.stageType === stageType)

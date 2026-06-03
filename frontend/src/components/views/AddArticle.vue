@@ -42,6 +42,7 @@ const selectedPartNumber = ref('')
 const pattern = /^\d{8}(-\d{2})?$/
 
 const headers = reactive([
+  { title: '№', key: 'index', width: '5%', align: 'center' as const },
   { title: 'Серийный номер', key: 'name', width: '15%', align: 'center' as const },
   { title: 'Артикул', key: 'partNumber', width: '10%', align: 'center' as const },
   { title: 'Инвойс', key: 'invoice', width: '10%', align: 'center' as const },
@@ -64,9 +65,10 @@ watch(dialogDelete, (val) => {
   if (!val) closeDialogDelete()
 })
 watch(QRDialog, (val) => {
-  if (!val){
+  if (!val) {
     errorStore.clearInfo()
-    watcherYandex.value?.stop()}
+    watcherYandex.value?.stop()
+  }
 })
 
 const closeDialog = () => {
@@ -209,9 +211,9 @@ const baseFolder = `Системы ТАУ - Общее/Фото ТАУ конт�
 
 const qrurl = ref('')
 const createQR = async (item: SerialNumberData) => {
-  errorStore.addInfo('не закрывайте QR пока фотограeфии не будут загружены')
+  errorStore.addInfo('не закрывайте QR пока фотографии не будут загружены')
   watcherYandex.value = createYandexDiskWatcher({
-    token: '', // OAuth токен
+    token: 'y0__xCzv6qkqveAAhiE-Tkg5JKEohRMzx8UgKzBxwhK0dcYxPQ-v_tAJA', // OAuth токен
     path: baseFolder, // папка для отслеживания
     intervalSec: 2,
     autoDownload: true, // автоматически скачивать файлы
@@ -219,8 +221,8 @@ const createQR = async (item: SerialNumberData) => {
     onChange: async (newFiles) => {
       newFiles.forEach((f) => {
         // гарантируем, что photos — это массив
-        console.log('from onChange');
-        
+        console.log('from onChange')
+
         if (!Array.isArray(item.photos)) {
           item.photos = []
         }
@@ -244,6 +246,18 @@ const createQR = async (item: SerialNumberData) => {
 
   qrurl.value = await generateQr(item)
   QRDialog.value = true
+}
+
+const showClearButton = ref(false)
+
+const onAddClick = () => {
+  emitData()
+  showClearButton.value = true // показать кнопку очистки
+}
+
+const clearTable = () => {
+  serialNumberStore.sNumbers = [] // очистить данные
+  showClearButton.value = false // скрыть кнопку
 }
 </script>
 
@@ -293,13 +307,16 @@ const createQR = async (item: SerialNumberData) => {
   </v-container>
   <teleport to="body"> </teleport>
   <v-data-table-virtual
-    :sort-by="[{ key: 'name', order: 'asc' }]"
+    :sort-by="[{ key: 'index', order: 'asc' }]"
     height="35vh"
     :headers="headers"
     density="compact"
     :items="serialNumberStore.sNumbers"
     :row-props="rowProps"
   >
+    <template v-slot:item.index="{ index }">
+      {{ index + 1 }}
+    </template>
     <template v-slot:item.status="{ item }">
       <v-checkbox hide-details v-model="item.status"></v-checkbox>
     </template>
@@ -341,10 +358,13 @@ const createQR = async (item: SerialNumberData) => {
     </v-row>
     <v-row justify="center">
       <v-col>
-        <v-btn :disabled="isAddButtonDisabled" color="green-lighten-3" @click="emitData" block
-          >Добавить</v-btn
-        >
-        <!-- <v-btn color="yellow-lighten-3" @click="tryToPrint">Баркоды</v-btn> -->
+        <v-btn :disabled="isAddButtonDisabled" color="green-lighten-3" @click="onAddClick" block>
+          Добавить
+        </v-btn>
+
+        <v-btn color="red-lighten-3" class="mt-2" @click="clearTable" block>
+          Очистить таблицу
+        </v-btn>
       </v-col>
 
       <!-- <v-col cols="12" md="6" sm="6">

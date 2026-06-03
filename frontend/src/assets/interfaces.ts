@@ -1,4 +1,24 @@
 import type { Prisma, Specification as SSSP } from '../../../shared/src'
+import InputControl from '../../src/components/views/InputControl.vue'
+import PreProduction from '../../src/components/views/PreProduction.vue'
+import AssemblyView from '../../src/components/views/AssemblyView.vue'
+import DevView from '../../src/components/views/DevView.vue'
+
+export const views = {
+  InputControl,
+  PreProduction,
+  AssemblyView,
+  DevView
+} as const
+
+export type ViewName = keyof typeof views
+
+export interface ViewParamsMap {
+  InputControl: { loadBySN?: string }
+  PreProduction: { batchId?: string }
+  AssemblyView: { sn: string; operator?: string }
+  DevView: { mode?: 'debug' | 'release' }
+}
 
 ///for app
 export type SerialNumberData = {
@@ -195,7 +215,7 @@ export type ClientsResponse = {
 
 export type CheckList = {
   title: string
-  values: Record<string, { status: string; comment: string }>
+  fields: { status: string; comment: string; descriptions?: string; name: string; image?: string }[]
 }
 
 export type Sp = {

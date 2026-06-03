@@ -2,7 +2,7 @@
 import { useCounterStore } from '@/stores/counter'
 import LabelPrintMulty from '../LabelPrintMulty.vue'
 import PrintPassports from '../printPassports.vue'
-import LabelEditor from '../LabelEditor.vue'
+import BulkAddComponents from '../BulkAddComponents.vue'
 const counterStore = useCounterStore()
 </script>
 
@@ -17,12 +17,12 @@ const counterStore = useCounterStore()
     </v-row>
     <hr />
   </v-container>
-  <LabelPrintMulty />
+  <!-- <LabelPrintMulty /> -->
   <PrintPassports />
   <v-container>
     <v-row>
       <v-col align-self="center">
-        <LabelEditor />
+        <BulkAddComponents />
       </v-col>
     </v-row>
   </v-container>

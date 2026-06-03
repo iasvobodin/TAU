@@ -57,6 +57,8 @@ model ProductionOperation {
   id             Int        @id @default(autoincrement())
   stageType      String
   date           DateTime   @default(now())
+  startTime      DateTime?
+  endTime        DateTime?
   status         String
   user           String
   productSN      String?
@@ -164,6 +166,10 @@ model DefectHistory {
   timestamp        DateTime @default(now())
   user             String
   supplierResponse String?  @db.Text
+
+  // Новые поля классификации (опциональные)
+  defectType   String? // 'fixable' или 'non-fixable'
+  defectSource String? // 'production' или 'supplier'
 
   component Component @relation(fields: [componentSN], references: [snComponent])
 }

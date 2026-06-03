@@ -19,20 +19,16 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const errorStore = useErrorStore()
   const counterStore = useCounterStore()
 
-  // async function getUserENV() {
-  //   const user = await os.getEnv('USERNAME')
-  //   const comp = await os.getEnv('COMPUTERNAME')
-  //   return `${user}_${comp}`
-  // }
-  userStore.getUserENV()
+  if (!userStore.userENV) {
+    userStore.getUserENV()
+  }
 
   async function connect() {
     if (socket.value && socket.value.readyState === WebSocket.OPEN) return
 
-    // const user = await getUserENV()
-
     if (window.location.pathname === '/') {
       socket.value = new WebSocket(`ws://${URL_WS}/ws?userId=${userStore.userENV}`)
+      console.log('try to connect', `ws://${URL_WS}/ws?userId=${userStore.userENV}`, socket.value)
       socket.value.onopen = async () => {
         connected.value = true
         errorStore.addInfo('WebSocket соединён')
@@ -130,13 +126,13 @@ export const useWebSocketStore = defineStore('websocket', () => {
       stopHeartbeat(clientId)
 
       // console.log('Neutralino client Disconnected', event)
-      send({
-        command: 'appClientDisconnect',
-        timestamp: new Date().toISOString(),
-        pid: window.NL_PID,
-        user: clientId,
-        fullName: userStore.userFullName || null
-      })
+      // send({
+      //   command: 'appClientDisconnect',
+      //   timestamp: new Date().toISOString(),
+      //   pid: window.NL_PID,
+      //   user: clientId,
+      //   fullName: userStore.userFullName || null
+      // })
     })
     events.on('windowClose', async (event) => {
       console.log(event, 'windowClose')
@@ -158,20 +154,18 @@ export const useWebSocketStore = defineStore('websocket', () => {
         window.location.pathname
       )
       events.on('appClientConnect', async (event) => {
-        console.log('Neutralino client connected', event)
-        await userStore.getUserName()
-        const localUserOrder = event.detail
-        const localUser = `${userStore.userName}_${localUserOrder}`
-
+        // console.log('Neutralino client connected', event)
+        // await userStore.getUserName()
+        // const localUserOrder = event.detail
+        // const localUser = `${userStore.userName}_${localUserOrder}`
         // Отправляем начальное подключение
-        send({
-          command: 'appClientConnect',
-          timestamp: new Date().toISOString(),
-          pid: window.NL_PID,
-          user: localUser,
-          fullName: userStore.userFullName || null
-        })
-
+        // send({
+        //   command: 'appClientConnect',
+        //   timestamp: new Date().toISOString(),
+        //   pid: window.NL_PID,
+        //   user: localUser,
+        //   fullName: userStore.userFullName || null
+        // })
         // Стартуем heartbeat с передачей задачи
         // startHeartbeat(localUser, () => {
         //   send({

@@ -45,7 +45,15 @@ const stringToUint8Array = (str: string) => {
 // Запись файла в Neutralino
 const writeTemplate = async (data: Uint8Array<ArrayBufferLike>) => {
   try {
-    await filesystem.writeBinaryFile(window.NL_PATH + '/.tmp/print-label.html', data)
+    // Создаем копию ArrayBuffer
+    const arrayBuffer = new ArrayBuffer(data.length)
+    const view = new Uint8Array(arrayBuffer)
+    view.set(data)
+
+    await filesystem.writeBinaryFile(
+      window.NL_PATH + '/.tmp/print-label.html',
+      data.buffer as ArrayBuffer
+    )
     console.log('Файл print-label.html успешно создан')
   } catch (error) {
     console.error('Ошибка при создании файла:', error)

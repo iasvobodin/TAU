@@ -2,14 +2,9 @@ import { defineStore } from 'pinia'
 import { createUser, getUser } from '@/api/userServices'
 import type { Prisma } from '../../../shared/src'
 import { app, os, filesystem, server, events, window as neuWindow } from '@neutralinojs/lib'
+import { getCurrentFormattedDate } from '@/assets/utils/getCurrentFormattedDate'
 declare const __BUILD_DATE__: string
-function getCurrentFormattedDate(dateStr: string): string {
-  const date = new Date(dateStr)
-  const day = String(date.getDate()).padStart(2, '0')
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const year = date.getFullYear()
-  return `${day}.${month}.${year}`
-}
+
 const buildDate = getCurrentFormattedDate(__BUILD_DATE__)
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -17,12 +12,12 @@ export const useUserStore = defineStore('user', {
     userENV: '',
     userExist: true, // существует ли пользователь в БД
     userFullName: '', // ФИО из БД
-    isLoadingUser: false // 👈 добавили
+    isLoadingUser: false
   }),
   getters: {
     // Простой геттер — нужно ли спрашивать ФИО
     needsFullName(): boolean {
-      // 👇 пока грузится — не показываем диалог
+      //  пока грузится — не показываем диалог
       return !this.isLoadingUser && (!this.userExist || !this.userFullName)
     },
     isFullNameValid: (state) => {
@@ -32,9 +27,13 @@ export const useUserStore = defineStore('user', {
   },
   actions: {
     async getUserENV() {
-      const user = await os.getEnv('USERNAME')
-      const comp = await os.getEnv('COMPUTERNAME')
-      this.userENV = `${user}_${comp}`
+      try {
+        const user = await os.getEnv('USERNAME')
+        const comp = await os.getEnv('COMPUTERNAME')
+        this.userENV = `${user}_${comp}`
+      } catch (error) {
+        console.log(error)
+      }
     },
     async getUserName() {
       this.isLoadingUser = true

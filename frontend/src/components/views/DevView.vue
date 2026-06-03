@@ -4,6 +4,7 @@ import type { Specification } from '@/assets/interfaces'
 import { fetchSpecifications } from '@/api/specificationServices'
 import CheckListView from './CheckListView.vue'
 import DefectsView from './DefectsView.vue'
+import { openSecondWindow } from '@/assets/utils/openSecondWindow'
 import {
   server,
   filesystem,
@@ -14,12 +15,25 @@ import {
 } from '@neutralinojs/lib'
 import { onMounted, shallowRef, ref, watch } from 'vue'
 import SettingsView from './SettingsView.vue'
+import LabelEditor from '../LabelEditor.vue'
+import SVGeditor from '../SvgEditor.vue'
 import AdminLog from '../AdminLog.vue'
 import ClientsApp from '../ClientsApp.vue'
 import OrderToProduction from './OrderToProduction.vue'
 import { getClients } from '@/api/userServices'
 
 // import { printDocxFile } from '@/assets/printer'
+
+const props = defineProps<{ payload: Record<string, any> }>()
+
+watch(
+  () => props.payload,
+  (p) => {
+    if (p.sn) {
+    }
+  },
+  { immediate: true }
+)
 
 // Интерфейс для клиента
 interface Client {
@@ -79,7 +93,9 @@ const componentsMap: Record<string, any> = {
   checklist: CheckListView,
   defects: DefectsView,
   settings: SettingsView,
-  znp: OrderToProduction
+  znp: OrderToProduction,
+  label: LabelEditor,
+  svg: SVGeditor
 }
 
 const templateCheckList = ref('')
@@ -192,69 +208,69 @@ const openFile = async () => {
   console.log(`ID: ${fileId}`)
 }
 
-const createFile = async () => {
-  const htmlContent = `
-  <!DOCTYPE html>
-  <html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDF Viewer</title>
-    <style>
-      body, html {
-        margin: 0;
-        padding: 0;
-        height: 100%;
-        overflow: hidden;
-      }
-      embed {
-        width: 100%;
-        height: 100%;
-      }
-    </style>
-  </head>
-  <body>
-    <embed src="http://127.0.0.1:8080/KD/19.5389.101.00 СБ.pdf" type="application/pdf" />
-  </body>
-  </html>
-`
-  // Функция для конвертации строки в Uint8Array
-  function stringToUint8Array(str: string) {
-    const encoder = new TextEncoder()
-    return encoder.encode(str)
-  }
+// const createFile = async () => {
+//   const htmlContent = `
+//   <!DOCTYPE html>
+//   <html lang="en">
+//   <head>
+//     <meta charset="UTF-8">
+//     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+//     <title>PDF Viewer</title>
+//     <style>
+//       body, html {
+//         margin: 0;
+//         padding: 0;
+//         height: 100%;
+//         overflow: hidden;
+//       }
+//       embed {
+//         width: 100%;
+//         height: 100%;
+//       }
+//     </style>
+//   </head>
+//   <body>
+//     <embed src="http://127.0.0.1:8080/KD/19.5389.101.00 СБ.pdf" type="application/pdf" />
+//   </body>
+//   </html>
+// `
+//   // Функция для конвертации строки в Uint8Array
+//   function stringToUint8Array(str: string) {
+//     const encoder = new TextEncoder()
+//     return encoder.encode(str)
+//   }
 
-  // Преобразуем HTML в Uint8Array
-  const data = stringToUint8Array(htmlContent)
-  try {
-    await filesystem.readDirectory(window.NL_PATH + '/temp')
-  } catch (error) {
-    await filesystem.createDirectory(window.NL_PATH + '/temp')
-  }
+//   // Преобразуем HTML в Uint8Array
+//   const data = stringToUint8Array(htmlContent)
+//   try {
+//     await filesystem.readDirectory(window.NL_PATH + '/temp')
+//   } catch (error) {
+//     await filesystem.createDirectory(window.NL_PATH + '/temp')
+//   }
 
-  // Запись файла в Neutralino
-  try {
-    await filesystem.writeBinaryFile(window.NL_PATH + '/temp/pdf-viewer.html', data)
-    console.log('Файл pdf-viewer.html успешно создан')
-  } catch (error) {
-    console.error('Ошибка при создании файла:', error)
-  }
-  try {
-    // Открываем новое окно
-    await neuWindow.create('/temp/pdf-viewer.html', {
-      x: 0,
-      y: 0,
-      width: 800,
-      height: 650,
-      maximizable: false,
-      exitProcessOnClose: true,
-      enableInspector: false,
-      processArgs: '--window-id=W_PDF'
-    })
-  } catch (error) {
-    console.log(error)
-  }
-}
+//   // Запись файла в Neutralino
+//   try {
+//     await filesystem.writeBinaryFile(window.NL_PATH + '/temp/pdf-viewer.html', data)
+//     console.log('Файл pdf-viewer.html успешно создан')
+//   } catch (error) {
+//     console.error('Ошибка при создании файла:', error)
+//   }
+//   try {
+//     // Открываем новое окно
+//     await neuWindow.create('/temp/pdf-viewer.html', {
+//       x: 0,
+//       y: 0,
+//       width: 800,
+//       height: 650,
+//       maximizable: false,
+//       exitProcessOnClose: true,
+//       enableInspector: false,
+//       processArgs: '--window-id=W_PDF'
+//     })
+//   } catch (error) {
+//     console.log(error)
+//   }
+// }
 
 const createWindow = async () => {
   // Открываем новое окно
@@ -324,7 +340,10 @@ const newRenderPDF = async () => {
 
   // Запись файла в Neutralino
   try {
-    await filesystem.writeBinaryFile(window.NL_PATH + '/temp/pdf-viewer.html', htmlArrayBuffer)
+    await filesystem.writeBinaryFile(
+      window.NL_PATH + '/temp/pdf-viewer.html',
+      htmlArrayBuffer as ArrayBuffer
+    )
     console.log('Файл pdf-viewer.html успешно создан')
   } catch (error) {
     console.error('Ошибка при создании файла:', error)
@@ -412,15 +431,24 @@ const createPDFJS = async () => {
   }
 
   // Записываем файл
-  await filesystem.writeBinaryFile(window.NL_PATH + '/temp/pdf-viewer.html', htmlArrayBuffer2)
+  await filesystem.writeBinaryFile(
+    window.NL_PATH + '/temp/pdf-viewer.html',
+    htmlArrayBuffer2 as ArrayBuffer
+  )
 }
 
 const tab = ref(null)
 </script>
 
 <template>
-  <h1>DEV</h1>
-
+  <v-container>
+    <v-row>
+      <v-col>
+        <h1>DEV</h1>
+      </v-col>
+    </v-row>
+  </v-container>
+  <v-divider class="border-opacity-50" color="info"></v-divider>
   <v-container>
     <v-row>
       <v-col cols="12">
@@ -448,10 +476,20 @@ const tab = ref(null)
         </v-btn>
       </v-col>
     </v-row>
+    <v-row>
+      <v-col cols="12">
+        <v-btn block color="gray" @click="selectComponent('label')"> Печать этикеток </v-btn>
+      </v-col>
+    </v-row>
+    <v-row>
+      <v-col cols="12">
+        <v-btn block color="gray" @click="selectComponent('svg')">SVG editor</v-btn>
+      </v-col>
+    </v-row>
   </v-container>
 
   <v-dialog :fullscreen="true" v-model="dialog" width="100%">
-    <v-toolbar color="white" density="compact">
+    <v-toolbar height="40" color="white" density="compact">
       <v-spacer></v-spacer>
       <v-btn icon @click="closeDialogAndCheck">
         <v-icon>mdi-close</v-icon>
@@ -464,7 +502,9 @@ const tab = ref(null)
   </v-dialog>
   <ClientsApp />
   <AdminLog />
-
+  <v-btn @click="openSecondWindow('path', 'Редактор этикеток', '', '/about', 'labelEditor')">
+    Печать этикеток
+  </v-btn>
   <!-- <button @click="readFile">readFile</button>
   <button @click="serverMount">mount server</button>
   <button @click="openFile">openFile</button>

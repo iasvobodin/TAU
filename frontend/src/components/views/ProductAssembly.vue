@@ -27,6 +27,7 @@ import { createDefectHistory } from '@/api/defectHistoryServices'
 import { openSecondWindow } from '@/assets/utils/openSecondWindow'
 import { useCounterStore } from '@/stores/counter'
 import { useWebSocketStore } from '@/stores/websockets'
+import { LabelPrinterMulty } from '@/assets/printLabelMulty'
 
 const props = defineProps<{
   information: ProductType['information']
@@ -76,6 +77,7 @@ const hasProdductionOperation = (stageType: string) => {
 const checkSerialNumber = async ($event: Event) => {
   const target = $event.target as HTMLTextAreaElement
   const result = await fetchComponent(target.value)
+
   if (!result.data) {
     serialNumber.value = ''
     return
@@ -329,7 +331,10 @@ const openPdfInHtml = async () => {
   const htmlData = stringToUint8Array(htmlContent)
 
   try {
-    await filesystem.writeBinaryFile(`${window.NL_PATH}/.tmp/pdf-viewer.html`, htmlData)
+    await filesystem.writeBinaryFile(
+      `${window.NL_PATH}/.tmp/pdf-viewer.html`,
+      htmlData.buffer as ArrayBuffer
+    )
     console.log('Файл pdf-viewer.html успешно создан')
   } catch (error) {
     console.error('Ошибка при создании HTML-файла:', error)
@@ -593,6 +598,36 @@ const printPasport = async (partNumber: string) => {
     console.error(error)
   }
 }
+const removeRelations = async (snComponent: string) => {
+  try {
+    await updateComponent(snComponent, {
+      snProductId: null //отвязываем бракованный компонент от продукта
+    })
+    removeComponentBySN(snComponent)
+  } catch (error) {
+    console.log(error)
+    return
+  }
+}
+
+function removeComponentBySN(snToRemove: string) {
+  for (const [key, value] of Object.entries(props.product.specification)) {
+    if (value.SN === snToRemove) {
+      console.log(key, 'найден компонент для удаления')
+
+      // очищаем серийник в спецификации
+      value.SN = ''
+
+      break
+    }
+  }
+
+  // удаляем из массива productSerialNumbers
+  const index = props.product.productSerialNumbers.indexOf(snToRemove)
+  if (index !== -1) {
+    props.product.productSerialNumbers.splice(index, 1)
+  }
+}
 
 const createFile = async () => {
   const htmlContent = `
@@ -637,7 +672,10 @@ const createFile = async () => {
 
   // Запись файла в Neutralino
   try {
-    await filesystem.writeBinaryFile(window.NL_PATH + '/.tmp/pdf-viewer.html', data)
+    await filesystem.writeBinaryFile(
+      window.NL_PATH + '/.tmp/pdf-viewer.html',
+      data.buffer as ArrayBuffer
+    )
     console.log('Файл pdf-viewer.html успешно создан')
   } catch (error) {
     console.error('Ошибка при создании файла:', error)
@@ -715,6 +753,23 @@ const openPrintPassportWindow = async (): Promise<void> => {
   }
 }
 
+// const printer = new LabelPrinterMulty(window.NL_PATH)
+
+const tryPrint = async () => {
+  // await printer.print(
+  //   [
+  //     { serial: '123456789' },
+  //     { serial: '987654321' } // 🔥 уже проверка массива
+  //   ],
+  //   {
+  //     partNumber: 'ABC-001',
+  //     description: 'Тестовое длинное описание изделия',
+  //     manufacturer: 'MyCompany'
+  //   }
+  // )
+}
+
+// v-if="props.information?.['Тип изделия'] === 'TerminalBlocks' || props.information?.['Тип изделия'] === 'SupportPanels'"
 onMounted(() => {
   serialNumberInput.value?.$el.querySelector('input')?.focus()
 })
@@ -804,15 +859,27 @@ onMounted(() => {
     </v-row>
     <v-row v-for="(value, key, index) in props.product.specification" :key="index" align="center">
       <v-col cols="8">{{ key }}</v-col>
-      <v-col cols="2">{{ value.PN }}</v-col>
-      <v-col cols="2">
+      <v-col cols="1.5">{{ value.PN }}</v-col>
+      <v-col cols="1.5">
         <p v-if="!value.SN">Сканировать SN</p>
         <p class="text-green" v-else>{{ value.SN }}</p>
       </v-col>
+      <v-col v-if="counterStore.settings" cols="1">
+        <v-btn
+          variant="text"
+          size="small"
+          color="error"
+          @click="removeRelations(value.SN)"
+          class="ml-1"
+        >
+          <v-icon size="22">mdi-delete</v-icon>
+        </v-btn></v-col
+      >
     </v-row>
 
     <v-row>
       <v-col cols="12">
+        <!-- <v-btn @click="tryPrint()" color="grey-lighten-3" block> -->
         <v-btn @click="printLabel(props)" color="grey-lighten-3" block>
           Печать наклейки с SN
         </v-btn>
@@ -828,8 +895,14 @@ onMounted(() => {
       </v-col> -->
     </v-row>
     <v-row>
-      <v-col>
-        <!-- @click="printPassport(props.information?.['Артикул изделия']!, getSerialNumber(props.product.specification) )" -->
+      <v-col
+        v-if="
+          props.information?.['Тип изделия'] === 'TerminalBlocks' ||
+          props.information?.['Тип изделия'] === 'SupportPanels'
+        "
+      ></v-col>
+      <!-- @click="printPassport(props.information?.['Артикул изделия']!, getSerialNumber(props.product.specification) )" -->
+      <v-col v-else>
         <v-btn
           openPrintPassportWindow
           @click="openPrintPassportWindow"
@@ -876,7 +949,35 @@ onMounted(() => {
   </v-container>
   <v-dialog v-model="assemblyPassedDialog" width="auto">
     <v-card class="pa-5" justify="center" min-width="400">
-      <v-container>
+      <v-container
+        v-if="
+          props.information?.['Тип изделия'] === 'TerminalBlocks' ||
+          props.information?.['Тип изделия'] === 'SupportPanels'
+        "
+      >
+        <v-row justify="center">
+          <v-col>
+            <h3 class="text-center">Подтвердите завершение сборки</h3>
+          </v-col>
+        </v-row>
+        <v-row class="pa-0">
+          <v-checkbox
+            v-model="checkLable"
+            label="Этикетка с серийным номером распечатана"
+            hide-details
+            class="mb-4"
+          />
+        </v-row>
+
+        <v-row>
+          <v-col>
+            <v-btn color="green-lighten-3" :disabled="!checkLable" block @click="assemblyPassed">
+              Сборка завершена
+            </v-btn>
+          </v-col>
+        </v-row>
+      </v-container>
+      <v-container v-else>
         <v-row justify="center">
           <v-col>
             <h3 class="text-center">Подтвердите завершение сборки</h3>

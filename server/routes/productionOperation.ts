@@ -89,7 +89,9 @@ export default function productionOperationRoutes(app: FastifyInstance) {
               comment: data.comment,
               productSN: data.productSN,
               user: data.user,
-              usedComponents: data.usedComponents, // passed accepted defective shipped
+              usedComponents: data.usedComponents,
+              // startTime: new Date(data.startTime),
+              // endTime: new Date(data.endTime), // passed accepted defective shipped
             },
           }
         );
@@ -115,6 +117,7 @@ export default function productionOperationRoutes(app: FastifyInstance) {
           !data.status ||
           !data.usedComponents ||
           !data.user
+          // 🛑 ДОБАВЛЕНА ПРОВЕРКА ОБЯЗАТЕЛЬНЫХ ПОЛЕЙ
         ) {
           throw new Error("Missing required fields");
         }
@@ -131,6 +134,12 @@ export default function productionOperationRoutes(app: FastifyInstance) {
               checkList: data.checkList,
               usedComponents: data.usedComponents,
               date: data.date ? new Date(data.date) : undefined, // ✅ добавлено
+              startTime: data.startTime
+                ? new Date(data.startTime as string)
+                : undefined,
+              endTime: data.endTime
+                ? new Date(data.endTime as string)
+                : undefined,
             },
           }
         );

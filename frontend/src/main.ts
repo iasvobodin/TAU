@@ -26,7 +26,12 @@ createApp(App).use(router).use(createPinia()).use(vuetify).mount('#app')
 
 const wsStore = useWebSocketStore()
 const userStore = useUserStore()
-wsStore.connect()
+console.log('we are here')
+
+userStore.getUserENV().then(() => {
+  wsStore.connect()
+  userStore.getUserName()
+})
 
 init()
 events.on('windowClose', () => {

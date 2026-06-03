@@ -1,14 +1,14 @@
 /**
- * renderToSVG.ts — векторный рендерер этикеток.
+ * renderToSVG.ts — векторный SVG-рендерер этикеток.
  *
  * Что делает:
- *   - Текст → SVG path через opentype.js
+ *   - Текст → SVG path через opentype.js (с корректным вертикальным выравниванием)
  *   - Штрихкоды → SVG path через bwip-js toSVG
  *   - Растровые изображения → <image> base64
  *   - SVG-изображения → inline
  *
- * Шрифты: путь к файлу берётся из fontManager (singleton).
- *   fontManager.init() + scan() вызываются в labelEditor при старте.
+ * Принимает тот же PrintTemplateData и CommonData, что и htmlRenderer.ts.
+ * Все отступы — в мм (TextRenderProps.paddingTop/Right/Bottom/Left).
  */
 
 import opentype from 'opentype.js'
@@ -19,27 +19,23 @@ import type {
   PrintTemplateData,
   PrintLabelElement,
   ElementPosition,
-  CommonData
+  CommonData,
+  TextRenderProps
 } from '@/types/label'
+import { resolveTextProps } from '@/types/label'
 
 // ─── Константы ───────────────────────────────────────────────────────────────
 
 const MM_TO_PX = 3.78
 
-// Папка встроенных шрифтов приложения (fallback если fontManager не нашёл)
 const APP_FONTS_DIR = `${window.NL_PATH}/.tmp/fonts`
 
 // ─── Типы ────────────────────────────────────────────────────────────────────
 
-/**
- * Элемент списка шрифтов для UI.
- * value === fullName из fontManager → хранится в props.fontFamily.
- * svgPreviewPath — web URL SVG-превью, сгенерированного fontManager.
- */
 export interface FontItem {
-  label: string // отображаемое имя
-  value: string // fullName — хранится в props.fontFamily
-  svgPreviewPath: string // '/.tmp/previews/arial_ttf.svg' или ''
+  label: string
+  value: string
+  svgPreviewPath: string
 }
 
 // Обратная совместимость — labelEditor.ts импортирует FontInfo
@@ -47,38 +43,25 @@ export type FontInfo = FontItem
 
 // ─── Кэши ────────────────────────────────────────────────────────────────────
 
-// fullName.toLowerCase() → зарегистрирован ли FontFace в браузере
 const loadedFonts = new Set<string>()
-// fullName.toLowerCase() → opentype.Font (для SVG-рендерера)
 const fontCache = new Map<string, opentype.Font | null>()
-// fullName.toLowerCase() → бинарник шрифта (для getFontBase64)
 const fontBufCache = new Map<string, ArrayBuffer>()
 
-// ─── Внутренний хелпер: загрузка бинарника ────────────────────────────────────
+// ─── Загрузка бинарника шрифта ────────────────────────────────────────────────
 
-/**
- * Возвращает бинарник шрифта и путь к файлу.
- * Порядок поиска:
- *   1. кэш fontBufCache
- *   2. fontManager.getPathByFullName()
- *   3. APP_FONTS_DIR/<family>.ttf (fallback для встроенных шрифтов)
- */
 async function readFontBuffer(
   fullName: string
 ): Promise<{ buf: ArrayBuffer; path: string } | null> {
   const key = fullName.toLowerCase()
 
-  // 1. Кэш
   const cached = fontBufCache.get(key)
   if (cached) {
     const path = fontManager.getPathByFullName(fullName) ?? `${APP_FONTS_DIR}/${fullName}.ttf`
     return { buf: cached, path }
   }
 
-  // 2. fontManager
   let path = fontManager.getPathByFullName(fullName)
 
-  // 3. Fallback — встроенные шрифты приложения
   if (!path) {
     for (const ext of ['ttf', 'otf']) {
       const fallback = `${APP_FONTS_DIR}/${fullName}.${ext}`
@@ -87,7 +70,7 @@ async function readFontBuffer(
         fontBufCache.set(key, buf)
         return { buf, path: fallback }
       } catch {
-        /* пробуем следующий */
+        /* следующий */
       }
     }
     console.warn(`[renderToSVG] шрифт не найден: "${fullName}"`)
@@ -107,12 +90,11 @@ async function readFontBuffer(
 // ─── Публичное API ────────────────────────────────────────────────────────────
 
 /**
- * Возвращает base64 data URL шрифта для @font-face в HTML-принтере.
+ * Base64 data URL шрифта — используется htmlRenderer для @font-face.
  */
 export async function getFontBase64(family: string): Promise<string | null> {
   const result = await readFontBuffer(family)
   if (!result) return null
-
   const { buf, path } = result
   const ext = path.split('.').pop()?.toLowerCase()
   const mime = ext === 'otf' ? 'font/otf' : 'font/truetype'
@@ -121,13 +103,12 @@ export async function getFontBase64(family: string): Promise<string | null> {
 }
 
 /**
- * Загружает шрифт и регистрирует через FontFace API + <style> инжект.
- * Вызывается при выборе шрифта пользователем, чтобы канвас сразу отобразил его.
+ * Регистрирует шрифт через FontFace API + инжект <style>.
+ * Вызывается при выборе шрифта пользователем.
  */
 export async function ensureFontFace(fullName: string): Promise<boolean> {
   const key = fullName.toLowerCase()
   if (loadedFonts.has(key)) return true
-  console.log(fullName)
 
   const result = await readFontBuffer(fullName)
   if (!result) return false
@@ -142,7 +123,6 @@ export async function ensureFontFace(fullName: string): Promise<boolean> {
     await face.load()
     document.fonts.add(face)
 
-    // Инжект <style> форсирует CSS recompute для уже отрендеренных элементов
     const injectId = `ff-${key.replace(/[^a-z0-9]/g, '-')}`
     if (!document.getElementById(injectId)) {
       const style = document.createElement('style')
@@ -160,8 +140,7 @@ export async function ensureFontFace(fullName: string): Promise<boolean> {
 }
 
 /**
- * Возвращает opentype.Font для SVG-рендерера.
- * Если шрифт ещё не зарегистрирован в браузере — регистрирует попутно.
+ * Загружает opentype.Font для SVG-рендерера.
  */
 export async function loadFont(family: string): Promise<opentype.Font | null> {
   const key = family.toLowerCase()
@@ -174,7 +153,6 @@ export async function loadFont(family: string): Promise<opentype.Font | null> {
   }
 
   const { buf } = result
-
   try {
     if (!loadedFonts.has(key)) {
       const face = new FontFace(family, buf)
@@ -239,36 +217,77 @@ function wrapText(
 
 // ─── Текст → SVG path ─────────────────────────────────────────────────────────
 
-function renderTextPaths(opts: {
-  text: string
-  font: opentype.Font
-  fontSizePx: number
-  x: number
-  y: number
-  w: number
-  h: number
-  align: 'left' | 'center' | 'right'
-  bold: boolean
-}): string {
-  const { text, font, fontSizePx, x, y, w, h, align } = opts
+function renderTextPaths(
+  opts: TextRenderProps & {
+    text: string
+    font: opentype.Font
+    x: number // мм
+    y: number // мм
+    w: number // мм
+    h: number // мм
+  }
+): string {
+  const {
+    text,
+    font,
+    x,
+    y,
+    w,
+    h,
+    fontSize: fontSizePx,
+    align,
+    verticalAlign,
+    lineHeight,
+    paddingTop,
+    paddingRight,
+    paddingBottom,
+    paddingLeft
+  } = opts
+
+  // Координаты блока в px
   const xPx = x * MM_TO_PX
   const yPx = y * MM_TO_PX
   const wPx = w * MM_TO_PX
   const hPx = h * MM_TO_PX
-  const lineH = fontSizePx * 1.2
+
+  // Отступы мм → px
+  const padTopPx = paddingTop * MM_TO_PX
+  const padRightPx = paddingRight * MM_TO_PX
+  const padBottomPx = paddingBottom * MM_TO_PX
+  const padLeftPx = paddingLeft * MM_TO_PX
+
+  // Рабочая область с учётом отступов
+  const innerX = xPx + padLeftPx
+  const innerY = yPx + padTopPx
+  const innerW = Math.max(1, wPx - padLeftPx - padRightPx)
+  const innerH = Math.max(1, hPx - padTopPx - padBottomPx)
+
+  const lineH = fontSizePx * lineHeight
   const asc = (font.ascender / font.unitsPerEm) * fontSizePx
 
-  const lines = wrapText(font, text, fontSizePx, wPx - 8)
+  const lines = wrapText(font, text, fontSizePx, innerW)
   const totalH = lines.length * lineH
-  const startY = yPx + (hPx - totalH) / 2 + asc
+
+  // Вертикальное выравнивание текстового блока внутри рабочей области
+  let baselineY: number
+  if (verticalAlign === 'top') {
+    baselineY = innerY + asc
+  } else if (verticalAlign === 'bottom') {
+    baselineY = innerY + innerH - totalH + asc
+  } else {
+    // middle (по умолчанию)
+    baselineY = innerY + (innerH - totalH) / 2 + asc
+  }
 
   return lines
     .map((ln, i) => {
       if (!ln.text) return ''
-      let lx = xPx + 4
-      if (align === 'center') lx = xPx + (wPx - ln.widthPx) / 2
-      if (align === 'right') lx = xPx + wPx - ln.widthPx - 4
-      const ly = startY + i * lineH
+      // Горизонтальное выравнивание строки внутри рабочей области
+      let lx = innerX
+      if (align === 'center') lx = innerX + (innerW - ln.widthPx) / 2
+      if (align === 'right') lx = innerX + innerW - ln.widthPx
+
+      const ly = baselineY + i * lineH
       const svgStr = font.getPath(ln.text, lx, ly, fontSizePx).toSVG(2)
       const d = svgStr.match(/d="([^"]+)"/)?.[1]
       return d ? `<path d="${d}" fill="#000"/>` : ''
@@ -329,7 +348,7 @@ function renderBarcodeSVG(
   return `<g transform="translate(${ox.toFixed(2)},${oy.toFixed(2)}) scale(${scale.toFixed(4)})">${inner}</g>`
 }
 
-// ─── Изображение: растр → <image>, SVG → inline ──────────────────────────────
+// ─── Изображение → SVG ────────────────────────────────────────────────────────
 
 function renderImageSVG(src: string, pos: ElementPosition): string {
   if (!src) return ''
@@ -366,13 +385,10 @@ function renderImageSVG(src: string, pos: ElementPosition): string {
 
 function resolveValue(el: PrintLabelElement, data: CommonData, serial?: string): string {
   if (el.props.isSerial && serial !== undefined) return serial
-
-  if (el.type === 'barcode') {
-    return serial ?? data['serial'] ?? data[el.dataField] ?? ''
-  }
-
+  if (el.type === 'barcode') return serial ?? data['serial'] ?? data[el.dataField] ?? ''
   return data[el.dataField] ?? ''
 }
+
 // ─── Одна этикетка → SVG строка ──────────────────────────────────────────────
 
 export async function renderLabelToSVG(
@@ -394,40 +410,55 @@ export async function renderLabelToSVG(
 
     if (el.type === 'text') {
       const fieldValue = resolveValue(el, data, serial)
-      const family = el.props.fontFamily ?? 'Arial'
-      const sizePx = el.props.fontSize ?? 12
-      const align = el.props.align ?? 'left'
-      const font = await loadFont(family)
+      const tp = resolveTextProps(el.props)
+      const font = await loadFont(tp.fontFamily)
 
       if (font) {
         parts.push(
           renderTextPaths({
+            ...tp,
             text: fieldValue || ' ',
             font,
-            fontSizePx: sizePx,
             x: pos.x,
             y: pos.y,
             w: pos.w,
-            h: pos.h,
-            align,
-            bold: el.props.bold ?? false
+            h: pos.h
           })
         )
       } else {
         // Fallback — SVG <text> без конвертации в path
-        const xPx = (pos.x * MM_TO_PX + 4).toFixed(2)
-        const yPx = (pos.y * MM_TO_PX + (pos.h * MM_TO_PX) / 2).toFixed(2)
+        const xPx = (pos.x * MM_TO_PX + tp.paddingLeft * MM_TO_PX).toFixed(2)
         const cxPx = (pos.x * MM_TO_PX + (pos.w * MM_TO_PX) / 2).toFixed(2)
-        const rxPx = (pos.x * MM_TO_PX + pos.w * MM_TO_PX - 4).toFixed(2)
-        const anchor = align === 'center' ? 'middle' : align === 'right' ? 'end' : 'start'
-        const tx = align === 'center' ? cxPx : align === 'right' ? rxPx : xPx
+        const rxPx = (pos.x * MM_TO_PX + pos.w * MM_TO_PX - tp.paddingRight * MM_TO_PX).toFixed(2)
+
+        // Вертикальное выравнивание для fallback <text>
+        const innerH = pos.h * MM_TO_PX - tp.paddingTop * MM_TO_PX - tp.paddingBottom * MM_TO_PX
+        let yPx: number
+        if (tp.verticalAlign === 'top') {
+          yPx = pos.y * MM_TO_PX + tp.paddingTop * MM_TO_PX + tp.fontSize * 0.8
+        } else if (tp.verticalAlign === 'bottom') {
+          yPx = pos.y * MM_TO_PX + tp.paddingTop * MM_TO_PX + innerH - tp.fontSize * 0.2
+        } else {
+          yPx = pos.y * MM_TO_PX + tp.paddingTop * MM_TO_PX + innerH / 2
+        }
+
+        const anchor = tp.align === 'center' ? 'middle' : tp.align === 'right' ? 'end' : 'start'
+        const tx = tp.align === 'center' ? cxPx : tp.align === 'right' ? rxPx : xPx
+        const dominantBaseline =
+          tp.verticalAlign === 'top'
+            ? 'text-before-edge'
+            : tp.verticalAlign === 'bottom'
+              ? 'text-after-edge'
+              : 'middle'
         const safe = (fieldValue || ' ')
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
           .replace(/>/g, '&gt;')
-        parts.push(`<text x="${tx}" y="${yPx}" font-family="${family}" font-size="${sizePx}"
-          font-weight="${el.props.bold ? 'bold' : 'normal'}" text-anchor="${anchor}"
-          dominant-baseline="middle" fill="#000">${safe}</text>`)
+        parts.push(
+          `<text x="${tx}" y="${yPx.toFixed(2)}" font-family="${tp.fontFamily}" font-size="${tp.fontSize}"` +
+            ` font-weight="${tp.bold ? 'bold' : 'normal'}" text-anchor="${anchor}"` +
+            ` dominant-baseline="${dominantBaseline}" fill="#000">${safe}</text>`
+        )
       }
     } else if (el.type === 'barcode') {
       const val = resolveValue(el, data, serial)
@@ -446,7 +477,7 @@ export async function renderLabelToSVG(
 </svg>`
 }
 
-// ─── Несколько этикеток → HTML с SVG на каждой странице ──────────────────────
+// ─── Пакет этикеток → HTML-страница с SVG ────────────────────────────────────
 
 export async function renderLabelsToHTML(
   items: Array<{ serial: string }>,

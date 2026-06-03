@@ -387,7 +387,10 @@ const openPdfInHtml = async () => {
 
   // 5. Запись HTML-файла
   try {
-    await filesystem.writeBinaryFile(`${window.NL_PATH}/.tmp/pdf-viewer.html`, htmlData)
+    await filesystem.writeBinaryFile(
+      `${window.NL_PATH}/.tmp/pdf-viewer.html`,
+      htmlData.buffer as ArrayBuffer
+    )
     console.log('Файл pdf-viewer.html успешно создан')
   } catch (error) {
     console.error('Ошибка при создании HTML-файла:', error)
@@ -456,7 +459,10 @@ const createFile = async () => {
 
   // Запись файла в Neutralino
   try {
-    await filesystem.writeBinaryFile(window.NL_PATH + '/temp/pdf-viewer.html', data)
+    await filesystem.writeBinaryFile(
+      window.NL_PATH + '/temp/pdf-viewer.html',
+      data.buffer as ArrayBuffer
+    )
     console.log('Файл pdf-viewer.html успешно создан')
   } catch (error) {
     console.error('Ошибка при создании файла:', error)

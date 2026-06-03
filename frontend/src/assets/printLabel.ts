@@ -62,7 +62,7 @@ class FileSystemManager {
     const data = new TextEncoder().encode(content)
     const outputPath = `${this.basePath}/.tmp/${outputFile}`
     try {
-      await filesystem.writeBinaryFile(outputPath, data)
+      await filesystem.writeBinaryFile(outputPath, data.buffer as ArrayBuffer)
       console.log(`Файл ${outputFile} успешно создан`)
     } catch (error) {
       throw new Error(`Ошибка записи файла ${outputFile}: ${JSON.stringify(error)}`)
@@ -201,7 +201,9 @@ class LabelPrinter {
       .replace('${LabelInfo.imageUrl}', data.imageUrl || '')
       .replace(
         '${LabelInfo.barcode}',
-        data.barcode.endsWith('-02') ? data.barcode.slice(0, -3) : data.barcode
+        data.barcode.endsWith('-02') || data.barcode.endsWith('-01')
+          ? data.barcode.slice(0, -3)
+          : data.barcode
       )
       .replace('${LabelInfo.partNumber}', data.partNumber)
       .replace('${LabelInfo.productName}', data.productName)

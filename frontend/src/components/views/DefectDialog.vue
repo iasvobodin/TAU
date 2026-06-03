@@ -10,6 +10,7 @@ const props = defineProps<{
   product: Tsp
   information: ProductType['information']
 }>()
+console.log(props.product)
 
 const emit = defineEmits<{
   (e: 'update:dialog', value: boolean): void
@@ -31,6 +32,30 @@ watch(
     }
   }
 )
+
+const serialItems = computed(() => {
+  return props.productSerialNumbers.map((sn) => {
+    const entry = Object.entries(props.product.specification).find(([_, value]) => value.SN === sn)
+
+    if (!entry) {
+      return {
+        title: sn,
+        description: '',
+        pn: '',
+        value: sn
+      }
+    }
+
+    const [description, specValue] = entry
+
+    return {
+      title: sn, // важно!
+      description,
+      pn: specValue.PN,
+      value: sn
+    }
+  })
+})
 
 // Наблюдаем за failedComponents и обновляем productionOperationAlarm
 // watch(failedComponents, () => {
@@ -72,11 +97,19 @@ const printLabelDeffect = async () => {
 const isButtonDisabled = computed(() => {
   return !(failedComponents.value.length > 0 && comment.value && printLabelDone.value)
 })
+const toggleItem = (value: string) => {
+  const index = failedComponents.value.indexOf(value)
+  if (index === -1) {
+    failedComponents.value.push(value)
+  } else {
+    failedComponents.value.splice(index, 1)
+  }
+}
 </script>
 
 <template>
   <v-dialog :model-value="dialog" width="auto" @update:model-value="emit('update:dialog', $event)">
-    <v-card class="pa-10" justify="center" min-width="400">
+    <v-card class="pa-10" justify="center" min-width="800">
       <v-container>
         <v-row justify="center">
           <v-col>
@@ -86,14 +119,40 @@ const isButtonDisabled = computed(() => {
         <v-row>
           <v-col>
             <v-select
-              density="compact"
               v-model="failedComponents"
-              hide-details="auto"
-              label="Серийный номер"
-              :items="productSerialNumbers"
-              variant="solo"
+              :items="serialItems"
+              item-title="title"
+              item-value="value"
               multiple
-            ></v-select>
+              density="compact"
+              variant="solo"
+              label="Серийный номер"
+              :menu-props="{ maxWidth: 700 }"
+            >
+              <template #item="{ item, props }">
+                <v-list-item
+                  class="py-2"
+                  :class="{ 'v-list-item--active': failedComponents.includes(item.raw.value) }"
+                >
+                  <template #prepend>
+                    <v-checkbox-btn
+                      :model-value="failedComponents.includes(item.raw.value)"
+                      density="compact"
+                      @click.stop="toggleItem(item.raw.value)"
+                    />
+                  </template>
+                  <div class="d-flex flex-column">
+                    {{ item.raw.value }}
+                    <span class="text-caption text-grey text-wrap">
+                      {{ item.raw.description }}
+                    </span>
+                  </div>
+                </v-list-item>
+              </template>
+              <template #selection="{ item }">
+                <span class="text-body-2 font-weight-medium"> {{ item.raw.value }} </span>
+              </template>
+            </v-select>
           </v-col>
         </v-row>
         <v-row justify="center">
@@ -150,3 +209,10 @@ const isButtonDisabled = computed(() => {
     </v-card>
   </v-dialog>
 </template>
+
+<style>
+.text-wrap {
+  white-space: normal;
+  word-break: break-word;
+}
+</style>

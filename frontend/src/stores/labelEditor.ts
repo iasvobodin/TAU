@@ -24,16 +24,14 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
   const selectedId = ref<string | null>(null)
   const labelSize = ref<LabelSize>({ width: 100, height: 60, unit: 'mm' })
   const zoom = ref<number>(1)
-  // gridStep — UI-предпочтение, не сохраняется в шаблон
-  const gridStep = ref<number>(1)
+  // gridStep зафиксирован на 0.1 мм — не экспортируется, канвас использует константу
+  const gridStep = ref<number>(0.1)
 
-  const fieldCounters = ref<FieldCounters>({
-    serial: 0,
-    partNumber: 0,
-    description: 0,
-    manufacturer: 0,
-    custom: 0
-  })
+  const fieldCounters = ref<FieldCounters>({ text: 0, barcode: 0, image: 0 })
+
+  // Инкрементируется при каждой загрузке шаблона.
+  // LabelCanvas подписывается на него и вызывает fitZoom.
+  const templateKey = ref(0)
 
   const batchCommonData = ref<Record<string, string>>({})
   const batchSerialsText = ref('261200001-01\n261200002-01\n261200003-01')
@@ -45,11 +43,8 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
   const fontsLoading = ref(true)
 
   // ── Инициализация fontManager ─────────────────────────────────────────────
-  // init() — быстро, читает кэш с диска → шрифты сразу доступны
-  // scan() — медленно, обходит систему → запускаем в фоне
   ;(async () => {
     await fontManager.init()
-
     const fromCache = fontManager.getSupportedFonts()
     if (fromCache.length) {
       availableFonts.value = fromCache.map((e) => ({
@@ -59,8 +54,6 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
       }))
     }
     fontsLoading.value = false
-
-    // Фоновое сканирование: добавляет новые шрифты и обновляет список
     fontManager.scan().then(() => {
       const all = fontManager.getSupportedFonts()
       if (all.length) {
@@ -74,15 +67,10 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
   })()
 
   // ===== Computed =====
-
   const labelSizeMM = computed(() => {
-    if (labelSize.value.unit === 'mm') {
+    if (labelSize.value.unit === 'mm')
       return { width: labelSize.value.width, height: labelSize.value.height }
-    }
-    return {
-      width: labelSize.value.width / MM_TO_PX,
-      height: labelSize.value.height / MM_TO_PX
-    }
+    return { width: labelSize.value.width / MM_TO_PX, height: labelSize.value.height / MM_TO_PX }
   })
 
   const labelSizeInPx = computed(() => ({
@@ -99,20 +87,24 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     selectedId.value ? (elements.value[selectedId.value] ?? null) : null
   )
 
+  const selectedPosition = computed(() =>
+    selectedId.value ? (positions.value[selectedId.value] ?? null) : null
+  )
+
   const templateTextFields = computed(() => {
     const seen = new Set<string>()
     return Object.values(elements.value)
-      .filter((el) => el.type === 'text' && !el.dataField.startsWith('serial'))
+      .filter((el) => el.type === 'text' && !el.props.isSerial)
       .filter((el) => {
         if (seen.has(el.dataField)) return false
         seen.add(el.dataField)
         return true
       })
-      .map((el) => ({ dataField: el.dataField, label: getFieldDisplayName(el.dataField) }))
+      .map((el) => ({ dataField: el.dataField, label: el.dataField }))
   })
 
   const hasSerialInTemplate = computed(() =>
-    Object.values(elements.value).some((el) => el.dataField.startsWith('serial'))
+    Object.values(elements.value).some((el) => el.props.isSerial === true)
   )
 
   const serials = computed(() =>
@@ -122,7 +114,6 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
       .filter(Boolean)
   )
 
-  // Синхронизация полей формы групповой печати с шаблоном
   watch(
     templateTextFields,
     (fields) => {
@@ -131,9 +122,7 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
         if (!currentKeys.has(key)) delete batchCommonData.value[key]
       }
       for (const { dataField } of fields) {
-        if (!(dataField in batchCommonData.value)) {
-          batchCommonData.value[dataField] = ''
-        }
+        if (!(dataField in batchCommonData.value)) batchCommonData.value[dataField] = ''
       }
       if (!hasSerialInTemplate.value) batchPrintEnabled.value = false
     },
@@ -146,18 +135,7 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
   }
 
   function getDefaultText(field?: string): string {
-    switch (field?.split('_')[0]) {
-      case 'serial':
-        return 'SN:123456'
-      case 'partNumber':
-        return 'PN:AB123'
-      case 'description':
-        return 'Описание продукта'
-      case 'manufacturer':
-        return 'Производитель'
-      default:
-        return 'Текст'
-    }
+    return field ?? 'Текст'
   }
 
   function getDisplayText(element: LabelElement): string {
@@ -165,21 +143,10 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     return getDefaultText(element.dataField)
   }
 
-  function getFieldDisplayName(dataField: string): string {
-    const [base, index] = dataField.split('_')
-    const names: Record<string, string> = {
-      serial: 'Serial',
-      partNumber: 'Part Number',
-      description: 'Description',
-      manufacturer: 'Manufacturer',
-      custom: 'Custom'
-    }
-    return `${names[base] ?? base} ${index}`
-  }
-
-  function generateFieldName(baseField: keyof FieldCounters): DataField {
-    fieldCounters.value[baseField]++
-    return `${baseField}_${fieldCounters.value[baseField]}`
+  function splitDataField(dataField: string): { prefix: string; suffix: string } {
+    const m = dataField.match(/^(.+)_(\d+)$/)
+    if (m) return { prefix: m[1], suffix: `_${m[2]}` }
+    return { prefix: dataField, suffix: '' }
   }
 
   // ===== Position management =====
@@ -193,7 +160,13 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
   }
 
   function updatePosition(id: string, pos: ElementPosition): void {
-    positions.value[id] = clampToLabel(pos)
+    // Округляем до 0.1 мм
+    positions.value[id] = clampToLabel({
+      x: Math.round(pos.x * 10) / 10,
+      y: Math.round(pos.y * 10) / 10,
+      w: Math.max(0.5, Math.round(pos.w * 10) / 10),
+      h: Math.max(0.5, Math.round(pos.h * 10) / 10)
+    })
   }
 
   // ===== Barcode =====
@@ -232,22 +205,19 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
   }
 
   // ===== Element management =====
-  function addElement(type: ElementType, baseField?: string): void {
+  function addElement(type: ElementType): void {
     const id = uid()
-
-    const dataField: DataField =
-      type === 'barcode'
-        ? `${baseField ?? 'serial'}_barcode`
-        : generateFieldName((baseField ?? 'custom') as keyof FieldCounters)
+    const counterKey = type as keyof FieldCounters
+    fieldCounters.value[counterKey]++
+    const dataField: DataField = `${type}_${fieldCounters.value[counterKey]}`
 
     const { width, height } = labelSizeMM.value
-    const defaultPos: ElementPosition = clampToLabel({
+    positions.value[id] = clampToLabel({
       x: 0,
       y: 0,
-      w: Math.round(width / 3),
-      h: Math.round(height / (type === 'barcode' ? 4 : 6))
+      w: Math.round((width / 3) * 10) / 10,
+      h: Math.round((height / (type === 'barcode' ? 4 : 6)) * 10) / 10
     })
-    positions.value[id] = defaultPos
 
     const baseFontSize = Math.max(
       8,
@@ -266,15 +236,20 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
           bold: false,
           fontFamily: 'Arial',
           lineHeight: 1.2,
-          paddingX: 4,
-          paddingY: 0,
-          customText: getDefaultText(baseField)
+          // Отступы в мм (все 4 стороны)
+          paddingTop: 0,
+          paddingRight: 1.0,
+          paddingBottom: 0,
+          paddingLeft: 1.0,
+          isSerial: false,
+          customText: dataField
         }),
         ...(type === 'barcode' && {
           barcodeType: 'code128',
           barcodeHeight: 6,
           barcodeWidth: 6,
           barcodeScale: 10,
+          isSerial: false,
           testValue: 'TEST123456'
         }),
         ...(type === 'image' && { src: '', imageWidth: 100, imageHeight: 'auto' })
@@ -289,6 +264,29 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     delete positions.value[id]
     delete elements.value[id]
     if (selectedId.value === id) selectedId.value = null
+  }
+
+  function toggleSerial(id: string): void {
+    const el = elements.value[id]
+    if (!el) return
+    const wasSerial = !!el.props.isSerial
+    for (const e of Object.values(elements.value)) e.props.isSerial = false
+    if (!wasSerial) el.props.isSerial = true
+  }
+
+  function renameField(id: string, newPrefix: string): void {
+    const el = elements.value[id]
+    if (!el) return
+    const sanitized = newPrefix.trim().replace(/[^a-zA-Zа-яА-ЯёЁ0-9_-]/g, '_') || el.type
+    const { suffix } = splitDataField(el.dataField)
+    const newDataField = `${sanitized}${suffix}`
+    if (newDataField === el.dataField) return
+
+    if (el.dataField in batchCommonData.value) {
+      batchCommonData.value[newDataField] = batchCommonData.value[el.dataField]
+      delete batchCommonData.value[el.dataField]
+    }
+    el.dataField = newDataField
   }
 
   // ===== Label size =====
@@ -318,14 +316,19 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
                 verticalAlign: el.props.verticalAlign,
                 fontFamily: el.props.fontFamily,
                 lineHeight: el.props.lineHeight,
-                paddingX: el.props.paddingX,
-                paddingY: el.props.paddingY
+                // Новые 4-сторонние отступы в мм
+                paddingTop: el.props.paddingTop,
+                paddingRight: el.props.paddingRight,
+                paddingBottom: el.props.paddingBottom,
+                paddingLeft: el.props.paddingLeft,
+                isSerial: el.props.isSerial
               }),
               ...(el.type === 'barcode' && {
                 barcodeType: el.props.barcodeType,
                 barcodeHeight: el.props.barcodeHeight,
                 barcodeWidth: el.props.barcodeWidth,
-                barcodeScale: el.props.barcodeScale
+                barcodeScale: el.props.barcodeScale,
+                isSerial: el.props.isSerial
               }),
               ...(el.type === 'image' && {
                 src: el.props.src,
@@ -346,7 +349,7 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     if (parsed.positions) {
       positions.value = parsed.positions
     } else if (parsed.layout) {
-      // Миграция старого формата: grid-ячейки → мм
+      // Миграция старого grid-формата
       const cols = parsed.gridCols ?? 12
       const rows = parsed.gridRows ?? 12
       const { width, height } = labelSizeMM.value
@@ -370,18 +373,32 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
         dataField: el.dataField,
         props: {
           ...el.props,
-          ...(el.type === 'text' && { customText: getDefaultText(el.dataField) }),
-          ...(el.type === 'barcode' && { testValue: 'TEST123456', customText: null })
+          ...(el.type === 'text' && { customText: el.dataField }),
+          ...(el.type === 'barcode' && {
+            testValue: el.props?.testValue ?? 'TEST123456',
+            customText: null
+          })
         }
       }
       if (el.type === 'barcode') await generateBarcode(elements.value[id])
     }
 
+    resetCounters()
+    for (const el of Object.values(elements.value)) {
+      const m = el.dataField.match(/_(\d+)$/)
+      const num = m ? parseInt(m[1]) : 0
+      const key = el.type as keyof FieldCounters
+      if (key in fieldCounters.value && num > fieldCounters.value[key]) {
+        fieldCounters.value[key] = num
+      }
+    }
+
     selectedId.value = null
+    templateKey.value++ // сигнал для LabelCanvas → fitZoom
   }
 
   function resetCounters(): void {
-    fieldCounters.value = { serial: 0, partNumber: 0, description: 0, manufacturer: 0, custom: 0 }
+    fieldCounters.value = { text: 0, barcode: 0, image: 0 }
   }
 
   // ===== Persistence =====
@@ -442,9 +459,10 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     let serial = ''
     for (const el of Object.values(elements.value)) {
       if (el.type === 'text') {
-        common[el.dataField] = el.props.customText ?? getDefaultText(el.dataField)
-        if (el.dataField.startsWith('serial')) serial = common[el.dataField]
-      } else if (el.type === 'barcode' && el.dataField.includes('serial')) {
+        const val = el.props.customText ?? getDefaultText(el.dataField)
+        common[el.dataField] = val
+        if (el.props.isSerial) serial = val
+      } else if (el.type === 'barcode' && el.props.isSerial) {
         serial = el.props.testValue ?? ''
       }
     }
@@ -469,11 +487,6 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     }
 
     const templateData = buildTemplateData()
-    Object.values(templateData.elements).forEach((el: any) => {
-      delete el.props.customText
-      delete el.props.testValue
-    })
-
     const printFn = svgRenderEnabled.value
       ? printer.printFromTemplateSVG.bind(printer)
       : printer.printFromTemplate.bind(printer)
@@ -491,7 +504,7 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     selectedId,
     labelSize,
     zoom,
-    gridStep,
+    templateKey,
     batchCommonData,
     batchSerialsText,
     batchPrintEnabled,
@@ -499,35 +512,32 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     lastSavedPath,
     availableFonts,
     fontsLoading,
-
     // Computed
     labelSizeMM,
     labelSizeInPx,
     realSizeInPx,
     selectedElement,
+    selectedPosition,
     templateTextFields,
     hasSerialInTemplate,
     serials,
-
     // Actions — position
     updatePosition,
-
     // Actions — elements
     addElement,
     removeElement,
     updateBarcode,
-
+    toggleSerial,
+    renameField,
+    splitDataField,
     // Actions — editor
     validateSize,
     getDisplayText,
-    getFieldDisplayName,
-
     // Actions — template
     saveTemplate,
     saveTemplateAs,
     openTemplate,
     clearTemplate,
-
     // Actions — print
     printLabels
   }

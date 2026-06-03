@@ -14,6 +14,7 @@ import { filesystem, os } from '@neutralinojs/lib'
 import type { TransformSpecification } from './transformSP'
 import imgUrl from './1.png'
 import type { CheckList } from './interfaces'
+import { getCurrentFormattedDate } from '@/assets/utils/getCurrentFormattedDate'
 type OperationMap = Record<string, string>
 
 const OPERATION_MAP: OperationMap = {
@@ -23,14 +24,14 @@ const OPERATION_MAP: OperationMap = {
   package: 'Упаковка'
 }
 
-// Функция для форматирования даты в нужном формате
-function getCurrentFormattedDate(date: Date): string {
-  // const date = new Date()
-  const day = String(date.getDate()).padStart(2, '0')
-  const month = String(date.getMonth() + 1).padStart(2, '0') // Месяцы начинаются с 0
-  const year = date.getFullYear()
-  return `${day}.${month}.${year}`
-}
+// // Функция для форматирования даты в нужном формате
+// function getCurrentFormattedDate(date: Date): string {
+//   // const date = new Date()
+//   const day = String(date.getDate()).padStart(2, '0')
+//   const month = String(date.getMonth() + 1).padStart(2, '0') // Месяцы начинаются с 0
+//   const year = date.getFullYear()
+//   return `${day}.${month}.${year}`
+// }
 
 const CURRENT_DATE = getCurrentFormattedDate(new Date())
 
@@ -98,15 +99,13 @@ function createOperationsTable(headers: string[], rows: string[][]): Table {
 
   return new Table({ rows: tableRows, width: { size: 100, type: 'pct' } })
 }
-function parseCheckList(checkList: CheckList['values'] | null): string[][] {
+function parseCheckList(checkList: CheckList['fields'] | null): string[][] {
+  console.log(checkList, 'checkListcheckListcheckListcheckListcheckList')
+
   if (checkList === null) {
     return []
   } else {
-    return Object.entries(checkList).map(([title, { status, comment }]) => [
-      title,
-      status === 'pass' ? '✔️' : status,
-      comment || '-'
-    ])
+    return checkList.map((e) => [e.name, e.status === 'pass' ? '✔️' : e.status, e.comment || '-'])
   }
 }
 
@@ -127,20 +126,24 @@ function createCheckListTable(headers: string[], rows: string[][]): Table {
 // }
 
 const findCheckListInOperation = (operations: TransformSpecification['productionOperations']) => {
+  console.log(operations)
+
   const findValue = operations
     .map((operation) => {
       if (operation.stageType === 'functionalTest' && operation.checkList) {
         try {
           const parsed: CheckList = JSON.parse(operation.checkList)
-          if (parsed && parsed.values) {
-            return parsed.values
+          console.log(parsed)
+          if (parsed && parsed.fields) {
+            console.log(parsed.fields, 'parsed.fields')
+            return parsed.fields
           }
         } catch (err) {
           console.error('Ошибка при парсинге checkList:', err)
         }
       }
     })
-    .filter((values): values is CheckList['values'] => !!values)[0]
+    .filter((values): values is CheckList['fields'] => !!values)[0]
   if (findValue) {
     return findValue
   } else {
@@ -161,6 +164,8 @@ export const generatePasport = async (
     const checkListHeaders = ['Пункт проверки', 'Статус', 'Комментарий']
 
     const firstCheckListValues = findCheckListInOperation(productionOperationsData)
+
+    console.log(firstCheckListValues)
 
     const operationRows = productionOperationsData.map((operation) => {
       return [
@@ -209,7 +214,9 @@ export const generatePasport = async (
             }),
             new Paragraph({ text: `Изделие: ${productName}` }),
             new Paragraph({ text: `Артикул: ${productPartNumber}` }),
-            new Paragraph({ text: `INV.№: ${productSerialNumber}` }),
+            new Paragraph({
+              text: `Серийный номер: ${productSerialNumber.endsWith('-02') ? productSerialNumber.slice(0, -3) : productSerialNumber}`
+            }),
             new Paragraph({ text: 'Состав:', spacing: { before: 500 } }),
             createComponentTable(headers, specification),
             new Paragraph({ text: 'Перечень операций:', spacing: { before: 500 } }),
@@ -234,7 +241,7 @@ export const generatePasport = async (
       }
     })
 
-    const fileName = `Pasport__${productSerialNumber}.docx`
+    const fileName = `Паспорт технологический ${productSerialNumber.endsWith('-02') ? productSerialNumber.slice(0, -3) : productSerialNumber}.docx`
     const blob = await Packer.toBlob(doc)
     const arrayBuffer = await blob.arrayBuffer()
     const savePath = await os.showSaveDialog('Сохранить файл', {

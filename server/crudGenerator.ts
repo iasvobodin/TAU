@@ -8,7 +8,7 @@ interface CrudOptions {
   app: FastifyInstance;
   modelName: ModelName;
   path: string;
-  uniqueKey: string;
+  uniqueKey: string | number;
 }
 
 export function createCrudRoutes({
@@ -38,8 +38,16 @@ export function createCrudRoutes({
     reply.code(201).send(result);
   });
 
-  app.put(`${path}/:${uniqueKey}`, async (req, reply) => {
-    const result = await model.update({ where: req.params, data: req.body });
+  app.put(`${path}/:${uniqueKey}`, async (req: any, reply) => {
+    const { [uniqueKey]: id } = req.params; // Извлекаем id по имени ключа
+
+    const result = await model.update({
+      where: {
+        // Приводим к числу только само значение ID
+        [uniqueKey]: Number(id),
+      },
+      data: req.body,
+    });
     reply.send(result);
   });
 

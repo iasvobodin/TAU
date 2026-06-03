@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, shallowRef, onMounted, type Ref } from 'vue'
+import { reactive, ref, watch, shallowRef, onMounted, type Ref } from 'vue'
 import { fetchProduct } from '@/api/productServices'
 import { fetchComponent } from '@/api/componentServices'
 import type { ProductType, ProductAllPayload, Tsp, Information } from '@/assets/interfaces'
@@ -16,6 +16,17 @@ import { transformSpecification } from '@/assets/transformSP'
 import { generatePasport } from '@/assets/generatePasport'
 import { useErrorStore } from '@/stores/errorStore'
 import { useCounterStore } from '@/stores/counter'
+
+const props = defineProps<{ payload: Record<string, any> }>()
+
+watch(
+  () => props.payload,
+  (p) => {
+    if (p.sn) {
+    }
+  },
+  { immediate: true }
+)
 
 const counterStore = useCounterStore()
 const errorStore = useErrorStore()
@@ -119,6 +130,8 @@ const tryFetchComponentThenProduct = async (snComponent: string) => {
   try {
     // пробуем запросить компонент
     const result = await fetchComponent(snComponent)
+    console.log(result.data)
+
     // проверяем привязан ли он к продукту
     const snId = result.data?.snProductId
     if (snId) {
@@ -165,7 +178,9 @@ const getProduct = async (cleared: boolean = true) => {
   if (result && result.data) {
     // console.log(result.data, 'product')
     // console.log(tsp.value)
+    //вот тут получаем все пропсы для дальнейшей работы
     tsp.value = await transformSpecification(result.data)
+    console.log('TSP VALUE', tsp.value, result.data)
     // console.log(result.data, 'result.dataresult.dataresult.dataresult.dataresult.dataresult.dataresult.data');
 
     if ((result.data.specification.type as Information['Тип изделия']) === 'TerminalBlocks') {
@@ -265,8 +280,15 @@ onMounted(() => {
 </script>
 
 <template>
-  <h1>Сборка</h1>
+  <v-container>
+    <v-row>
+      <v-col>
+        <h1>Сборка</h1>
+      </v-col>
+    </v-row>
+  </v-container>
   <v-divider class="border-opacity-50" color="info"></v-divider>
+
   <v-container>
     <v-row align="center" justify="center">
       <v-col
@@ -326,12 +348,12 @@ onMounted(() => {
       <v-col>
         <v-btn
           block
-          v-if="tsp && currentStep === 4"
+          v-if="tsp && currentStep === 4 && product.information?.SN"
           @click="
             generatePasport(
               tsp.information['Наименование изделия'],
               tsp.information['Артикул изделия'],
-              tsp.information['Инв. № изделия']!,
+              product.information?.SN,
               tsp.specification,
               tsp.productionOperations
             )

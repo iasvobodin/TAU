@@ -1,25 +1,69 @@
 <script setup lang="ts">
 /**
  * LabelCanvas — канвас-адаптер для vue-draggable-resizable.
- * Единственный файл который знает про библиотеку и конвертирует мм ↔ px.
  *
- * Контракт со store:
- *   Читает:  positions (мм), elements, selectedId, labelSizeInPx, zoom, gridStep, labelSizeMM
- *   Пишет:   store.updatePosition(id, ElementPosition в мм), store.selectedId, store.removeElement
+ * Zoom-логика:
+ *   • При загрузке шаблона (watch templateKey + labelSizeMM) автоматически
+ *     вычисляет коэффициент так, чтобы этикетка занимала рабочую область.
+ *   • Колёсико мыши над рабочей областью меняет зум ±0.1.
+ *   • Шаг привязки сетки зафиксирован на 0.1 мм.
  */
-import { computed } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { storeToRefs } from 'pinia'
 import VueDraggableResizable from 'vue-draggable-resizable'
 import 'vue-draggable-resizable/style.css'
 import { useLabelEditorStore } from '@/stores/labelEditor'
+import { resolveTextProps } from '@/types/label'
 import type { ElementPosition } from '@/types/label'
 
 const store = useLabelEditorStore()
-const { positions, elements, selectedId, labelSizeInPx, labelSizeMM, zoom, gridStep } =
+const { positions, elements, selectedId, labelSizeInPx, labelSizeMM, zoom, templateKey } =
   storeToRefs(store)
 
-// ── мм ↔ px ──────────────────────────────────────────────────────────────────
+// ── Константы ─────────────────────────────────────────────────────────────────
 const MM_TO_PX = 3.78
+const SNAP_MM = 0.1 // шаг привязки — 0.1 мм
+const FIT_PADDING = 48 // px-зазор вокруг этикетки при авто-фите
+
+// ── Ref на контейнер ──────────────────────────────────────────────────────────
+const containerEl = ref<HTMLElement | null>(null)
+
+// ── Авто-фит ──────────────────────────────────────────────────────────────────
+function fitZoom() {
+  if (!containerEl.value) return
+  const cw = containerEl.value.clientWidth
+  const ch = containerEl.value.clientHeight
+  if (cw === 0 || ch === 0) return
+
+  const labelW = labelSizeMM.value.width * MM_TO_PX
+  const labelH = labelSizeMM.value.height * MM_TO_PX
+
+  const raw = Math.min((cw - FIT_PADDING * 2) / labelW, (ch - FIT_PADDING * 2) / labelH)
+  // Округляем до 0.1, зажимаем в допустимые пределы
+  zoom.value = Math.min(9, Math.max(0.5, Math.round(raw * 10) / 10))
+}
+
+// Авто-фит при маунте (первый рендер)
+onMounted(async () => {
+  await nextTick()
+  fitZoom()
+})
+
+// Авто-фит при загрузке шаблона (templateKey меняется в applyTemplateData)
+watch(templateKey, () => nextTick(fitZoom))
+
+// Авто-фит при изменении размера этикетки (пользователь поменял W/H в панели)
+watch(labelSizeMM, () => nextTick(fitZoom), { deep: true })
+
+// ── Колёсико мыши — изменение зума ───────────────────────────────────────────
+function onWheel(e: WheelEvent) {
+  // e.preventDefault() уже вызван через @wheel.prevent в шаблоне
+  const step = e.shiftKey ? 0.5 : 0.1 // Shift → крупный шаг
+  const delta = e.deltaY < 0 ? step : -step
+  zoom.value = Math.min(9, Math.max(0.5, Math.round((zoom.value + delta) * 10) / 10))
+}
+
+// ── мм ↔ px ───────────────────────────────────────────────────────────────────
 function mmToPx(mm: number): number {
   return mm * MM_TO_PX * zoom.value
 }
@@ -27,67 +71,82 @@ function pxToMm(px: number): number {
   return px / (MM_TO_PX * zoom.value)
 }
 
-// Шаг snap-сетки в px
-const snapPx = computed(() => Math.max(1, Math.round(mmToPx(gridStep.value))))
+const snapPx = computed(() => Math.max(1, Math.round(mmToPx(SNAP_MM))))
 
-// px-позиция для библиотеки, вычисляется из мм
 function posToPx(pos: ElementPosition) {
   return {
     x: Math.round(mmToPx(pos.x)),
     y: Math.round(mmToPx(pos.y)),
-    w: Math.max(1, Math.round(mmToPx(pos.w))),
-    h: Math.max(1, Math.round(mmToPx(pos.h)))
+    w: Math.max(snapPx.value, Math.round(mmToPx(pos.w))),
+    h: Math.max(snapPx.value, Math.round(mmToPx(pos.h)))
   }
 }
 
-// ── Ключ для принудительного перемонтирования при смене зума ─────────────────
-// vue-draggable-resizable кэширует размер родителя при mount.
-// При изменении zoom родитель меняет px-размер → нужно перемонтировать
-// чтобы библиотека пересчитала границы.
-// Позиции восстанавливаются из мм → px корректно.
-
-// ── Обработчики событий библиотеки ───────────────────────────────────────────
+// ── Drag / resize ─────────────────────────────────────────────────────────────
 function onDragStop(id: string, xPx: number, yPx: number): void {
   const pos = positions.value[id]
   if (!pos) return
   store.updatePosition(id, { x: pxToMm(xPx), y: pxToMm(yPx), w: pos.w, h: pos.h })
 }
-
 function onResizeStop(id: string, xPx: number, yPx: number, wPx: number, hPx: number): void {
   store.updatePosition(id, { x: pxToMm(xPx), y: pxToMm(yPx), w: pxToMm(wPx), h: pxToMm(hPx) })
+}
+
+// ── Стили текстового блока (идентично htmlRenderer) ───────────────────────────
+function getTextWrapperStyle(props: Record<string, any>): Record<string, string> {
+  const tp = resolveTextProps(props as any)
+  const z = zoom.value
+  const padTop = (tp.paddingTop * MM_TO_PX * z).toFixed(2) + 'px'
+  const padRight = (tp.paddingRight * MM_TO_PX * z).toFixed(2) + 'px'
+  const padBottom = (tp.paddingBottom * MM_TO_PX * z).toFixed(2) + 'px'
+  const padLeft = (tp.paddingLeft * MM_TO_PX * z).toFixed(2) + 'px'
+  const alignItems =
+    tp.verticalAlign === 'top'
+      ? 'flex-start'
+      : tp.verticalAlign === 'bottom'
+        ? 'flex-end'
+        : 'center'
+  const justifyContent =
+    tp.align === 'center' ? 'center' : tp.align === 'right' ? 'flex-end' : 'flex-start'
+  return {
+    display: 'flex',
+    width: '100%',
+    height: '100%',
+    boxSizing: 'border-box',
+    overflow: 'hidden',
+    alignItems,
+    justifyContent,
+    fontSize: tp.fontSize * z + 'px',
+    lineHeight: String(tp.lineHeight),
+    fontWeight: tp.bold ? 'bold' : 'normal',
+    fontFamily: `'${tp.fontFamily}'`,
+    padding: `${padTop} ${padRight} ${padBottom} ${padLeft}`,
+    wordBreak: 'break-word',
+    pointerEvents: 'none'
+  }
+}
+function getTextSpanStyle(props: Record<string, any>): Record<string, string> {
+  const tp = resolveTextProps(props as any)
+  return { width: '100%', textAlign: tp.align, overflow: 'hidden' }
 }
 </script>
 
 <template>
-  <div
-    class="canvas-container"
-    style="
-      flex: 1;
-      background: #e0e0e0;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      overflow: auto;
-      min-height: 0;
-    "
-  >
+  <!--
+    @wheel.prevent — перехватываем колёсико над рабочей областью.
+    ref="containerEl" — нужен для вычисления размера при авто-фите.
+  -->
+  <div ref="containerEl" class="canvas-container" @wheel.prevent="onWheel">
+    <!-- Белый лист этикетки -->
     <div
+      class="canvas-label"
       :style="{
-        position: 'relative',
         width: labelSizeInPx.width + 'px',
-        height: labelSizeInPx.height + 'px',
-        flexShrink: 0,
-        backgroundColor: '#fff',
-        border: '1px solid #c0c0c0',
-        borderRadius: '4px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+        height: labelSizeInPx.height + 'px'
       }"
       @click.self="selectedId = null"
     >
-      <!-- :key включает zoom — при смене масштаба компонент ремонтируется
-           и vue-draggable-resizable перечитывает px-размер родителя -->
+      <!-- :key включает zoom — VDR перечитывает размеры родителя при ремаунте -->
       <template v-for="(pos, id) in positions" :key="String(id)">
         <VueDraggableResizable
           v-if="elements[id]"
@@ -102,8 +161,8 @@ function onResizeStop(id: string, xPx: number, yPx: number, wPx: number, hPx: nu
           :min-height="snapPx"
           :active="selectedId === String(id)"
           :prevent-deactivation="true"
-          class="label-element"
-          :class="{ 'label-element--selected': selectedId === String(id) }"
+          class="label-el"
+          :class="{ 'label-el--selected': selectedId === String(id) }"
           @activated="selectedId = String(id)"
           @drag-stop="(x: number, y: number) => onDragStop(String(id), x, y)"
           @resize-stop="
@@ -114,56 +173,27 @@ function onResizeStop(id: string, xPx: number, yPx: number, wPx: number, hPx: nu
           <!-- TEXT -->
           <div
             v-if="elements[id]?.type === 'text'"
-            class="element-content"
-            :style="{
-              fontSize: (elements[id]?.props.fontSize ?? 12) * zoom + 'px',
-              lineHeight: elements[id]?.props.lineHeight ?? 1.2,
-              fontWeight: elements[id]?.props.bold ? 'bold' : 'normal',
-              fontFamily: `'${elements[id]?.props.fontFamily ?? 'Arial'}'`,
-              alignItems:
-                elements[id]?.props.verticalAlign === 'top'
-                  ? 'flex-start'
-                  : elements[id]?.props.verticalAlign === 'bottom'
-                    ? 'flex-end'
-                    : 'center',
-              justifyContent:
-                elements[id]?.props.align === 'center'
-                  ? 'center'
-                  : elements[id]?.props.align === 'right'
-                    ? 'flex-end'
-                    : 'flex-start',
-              padding: `${(elements[id]?.props.paddingY ?? 0) * zoom}px ${(elements[id]?.props.paddingX ?? 4) * zoom}px`
-            }"
+            :style="getTextWrapperStyle(elements[id]?.props ?? {})"
           >
-            <!--
-              span растягивается на всю ширину — text-align работает внутри него.
-              Без него justify-content позиционирует анонимный текстовый узел как единый блок.
-            -->
-            <span
-              :style="{
-                width: '100%',
-                textAlign: elements[id]?.props.align ?? 'left',
-                wordBreak: 'break-word',
-                overflow: 'hidden'
-              }"
-              >{{ store.getDisplayText(elements[id]!) }}</span
-            >
+            <span :style="getTextSpanStyle(elements[id]?.props ?? {})">
+              {{ store.getDisplayText(elements[id]!) }}
+            </span>
           </div>
 
           <!-- BARCODE -->
-          <div v-else-if="elements[id]?.type === 'barcode'" class="element-content">
+          <div v-else-if="elements[id]?.type === 'barcode'" class="el-center">
             <img
               v-if="elements[id]?.props.customText"
               :src="elements[id]!.props.customText as string"
               style="max-width: 100%; max-height: 100%; object-fit: contain"
               alt="barcode"
             />
+            <v-icon v-else size="22" color="#ccc">mdi-barcode</v-icon>
           </div>
 
           <!-- IMAGE -->
-          <div v-else-if="elements[id]?.type === 'image'" class="element-content">
+          <div v-else-if="elements[id]?.type === 'image'" class="el-center">
             <template v-if="elements[id]?.props.src">
-              <!-- Сырой SVG-текст (вставлен вручную) — рендерим inline -->
               <div
                 v-if="elements[id]!.props.src!.trimStart().startsWith('<svg')"
                 style="
@@ -176,7 +206,6 @@ function onResizeStop(id: string, xPx: number, yPx: number, wPx: number, hPx: nu
                 "
                 v-html="elements[id]!.props.src"
               />
-              <!-- URL / data URL (файл выбран через диалог) -->
               <img
                 v-else
                 :src="elements[id]!.props.src"
@@ -184,89 +213,140 @@ function onResizeStop(id: string, xPx: number, yPx: number, wPx: number, hPx: nu
                 alt="image"
               />
             </template>
-            <div v-else style="color: #999; text-align: center; font-size: 12px">
-              🖼️<br />Изображение
-            </div>
+            <v-icon v-else size="22" color="#ccc">mdi-image-outline</v-icon>
           </div>
         </VueDraggableResizable>
       </template>
 
-      <div class="size-info">
-        {{ labelSizeMM.width.toFixed(0) }} × {{ labelSizeMM.height.toFixed(0) }} мм
+      <!-- Размер этикетки -->
+      <div class="canvas-badge canvas-badge--br">
+        {{ labelSizeMM.width.toFixed(1) }} × {{ labelSizeMM.height.toFixed(1) }} мм
       </div>
-      <div v-if="zoom !== 1" class="zoom-badge">🔍 {{ Math.round(zoom * 100) }}%</div>
+      <!-- Текущий зум -->
+      <div class="canvas-badge canvas-badge--tr">{{ Math.round(zoom * 100) }}%</div>
+    </div>
+
+    <!-- Подсказка об управлении зумом -->
+    <div class="zoom-hint">
+      <v-icon size="12" color="#aaa">mdi-mouse</v-icon>
+      <span>колёсико — зум</span>
+      <span class="zoom-hint-sep">·</span>
+      <span>Shift + колёсико — ×5</span>
     </div>
   </div>
 </template>
 
 <style scoped>
-.label-element {
-  border: 1px solid #ddd;
-  background: white;
-  border-radius: 2px;
-  cursor: pointer;
-  transition:
-    border-color 0.15s,
-    background 0.15s,
-    box-shadow 0.15s;
-}
-.label-element:hover {
-  border-color: #1976d2;
-  background: #f8f9ff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-}
-.label-element--selected {
-  border: 2px solid #1976d2 !important;
-  background: #e3f2fd !important;
-  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.2) !important;
-}
-.element-content {
-  width: 100%;
-  height: 100%;
+/* ── Контейнер-рабочая область ───────────────────────────────────────────────── */
+.canvas-container {
+  flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  word-break: break-word;
-  overflow: hidden;
-  pointer-events: none;
-}
-.size-info {
-  position: absolute;
-  bottom: 4px;
-  right: 8px;
-  font-size: 10px;
-  color: #666;
-  font-family: monospace;
-  background: rgba(255, 255, 255, 0.95);
-  padding: 2px 6px;
-  border-radius: 4px;
-  pointer-events: none;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-.zoom-badge {
-  position: absolute;
-  top: 4px;
-  right: 8px;
-  font-size: 10px;
-  color: #1976d2;
-  font-weight: bold;
-  background: rgba(255, 255, 255, 0.95);
-  padding: 2px 6px;
-  border-radius: 4px;
-  pointer-events: none;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-.canvas-container {
+  gap: 8px;
+  padding: 24px;
+  overflow: auto;
+  min-height: 0;
+  cursor: default;
+
+  /* Шахматный фон */
+  background-color: #d8d8d8;
   background-image:
-    linear-gradient(45deg, #ccc 25%, transparent 25%),
-    linear-gradient(-45deg, #ccc 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #ccc 75%),
-    linear-gradient(-45deg, transparent 75%, #ccc 75%);
+    linear-gradient(45deg, #c8c8c8 25%, transparent 25%),
+    linear-gradient(-45deg, #c8c8c8 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #c8c8c8 75%),
+    linear-gradient(-45deg, transparent 75%, #c8c8c8 75%);
   background-size: 20px 20px;
   background-position:
     0 0,
     0 10px,
     10px -10px,
     -10px 0px;
+}
+
+/* ── Лист этикетки ───────────────────────────────────────────────────────────── */
+.canvas-label {
+  position: relative;
+  flex-shrink: 0;
+  background: #fff;
+  border: 1px solid #b0b0b0;
+  border-radius: 3px;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.18),
+    0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* ── Элемент на листе ────────────────────────────────────────────────────────── */
+.label-el {
+  border: 1px dashed #ccc;
+  background: transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    box-shadow 0.12s;
+}
+.label-el:hover {
+  border-color: #1976d2;
+  border-style: solid;
+  box-shadow: 0 0 0 1px rgba(25, 118, 210, 0.18);
+}
+.label-el--selected {
+  border: 1px solid #1976d2 !important;
+  box-shadow: 0 0 0 2px rgba(25, 118, 210, 0.25) !important;
+}
+
+/* ── Центрирование для barcode / image ───────────────────────────────────────── */
+.el-center {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+/* ── Бейджи (размер + зум) ───────────────────────────────────────────────────── */
+.canvas-badge {
+  position: absolute;
+  font-size: 10px;
+  font-family: 'Consolas', monospace;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 2px 7px;
+  border-radius: 10px;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+.canvas-badge--br {
+  bottom: 6px;
+  right: 8px;
+  color: #888;
+}
+.canvas-badge--tr {
+  top: 6px;
+  right: 8px;
+  color: #1565c0;
+  font-weight: 600;
+}
+
+/* ── Подсказка зума ──────────────────────────────────────────────────────────── */
+.zoom-hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: #aaa;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  user-select: none;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+.zoom-hint-sep {
+  color: #ccc;
 }
 </style>
