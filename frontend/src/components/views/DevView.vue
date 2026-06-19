@@ -5,6 +5,7 @@ import { fetchSpecifications } from '@/api/specificationServices'
 import CheckListView from './CheckListView.vue'
 import DefectsView from './DefectsView.vue'
 import { openSecondWindow } from '@/assets/utils/openSecondWindow'
+import { appConfig } from '@/assets/utils/AppConfig'
 import {
   server,
   filesystem,
@@ -191,18 +192,13 @@ const copyDir = async () => {
   } catch (error) {
     await filesystem.createDirectory(window.NL_PATH + '/KD')
   }
-  await filesystem.copy(
-    '\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\КД',
-    window.NL_PATH + '/KD'
-  )
+  await filesystem.copy(appConfig.paths.kd, window.NL_PATH + '/KD')
 }
 
 const openFile = async () => {
   console.log(window.NL_PATH)
   // await filesystem.createDirectory(window.NL_PATH + '/app-res');
-  files.value = await filesystem.readDirectory(
-    '//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/КД'
-  )
+  files.value = await filesystem.readDirectory(appConfig.paths.kd)
   console.log('Content: ', files.value)
   let fileId = await filesystem.openFile(files.value[1].path)
   console.log(`ID: ${fileId}`)

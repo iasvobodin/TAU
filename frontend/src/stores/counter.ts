@@ -4,6 +4,7 @@ import type { InputData } from '@/assets/interfaces'
 export const useCounterStore = defineStore('counter', () => {
   const count = ref(0)
   const settings = ref(false)
+  const functionalTestDev = ref(false)
   const adminView = ref(false)
   const logs = ref<string[]>([])
   // const inputData: Ref<InputData> = ref({
@@ -32,6 +33,7 @@ export const useCounterStore = defineStore('counter', () => {
     inputData,
     doubleCount,
     settings,
+    functionalTestDev,
     adminView,
     logs,
     addLogs,

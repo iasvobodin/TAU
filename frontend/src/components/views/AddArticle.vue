@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, reactive, watch, nextTick, computed } from 'vue'
+import { appConfig } from '@/assets/utils/AppConfig'
 import { usePartNumberComponents } from '../../stores/partNumberComponents'
 import { useSerialNumberStore } from '../../stores/serialNumberStore'
 import { useErrorStore } from '@/stores/errorStore'
@@ -202,9 +203,8 @@ const isAddButtonDisabled = computed(() => {
   )
 })
 const openFile = async () => {
-  os.execCommand(
-    `explorer "\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\Операционные карты\\ОК МП-ТАУ-001-24 Входной контроль.pdf"`
-  )
+  const okDir = appConfig.paths.ok.replace(/\//g, '\\')
+  os.execCommand(`explorer "${okDir}\\ОК МП-ТАУ-001-24 Входной контроль.pdf"`)
 }
 const folder = getCurrentMonthYear()
 const baseFolder = `Системы ТАУ - Общее/Фото ТАУ контроль/${folder}`

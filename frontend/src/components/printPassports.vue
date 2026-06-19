@@ -8,13 +8,15 @@ const partNumber = ref('')
 const serialsText = ref('')
 const loading = ref(false)
 
+import { appConfig } from '@/assets/utils/AppConfig'
+
 const CONFIG = {
   scriptName: 'convert.ps1',
   convertPath: './convertFolder',
   resourcesPath: '/frontend/dist/',
-  passportDir: '//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Паспорта',
+  passportDir: appConfig.paths.passports,
   searchKey: 'плата 2'
-} as const
+}
 
 function parseSerials(text: string): string[] {
   return text

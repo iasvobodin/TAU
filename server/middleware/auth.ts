@@ -2,7 +2,7 @@
 import type { FastifyInstance } from "fastify";
 
 const API_KEY = process.env.API_KEY || "your-secret-api-key-12345";
-const PUBLIC_ROUTES = ["/pid", "/ws", "/health", "/callback"];
+const PUBLIC_ROUTES = ["/pid", "/ws", "/health", "/callback", "/api/passport"];
 
 export function authMiddleware(app: FastifyInstance) {
   if (!API_KEY) {

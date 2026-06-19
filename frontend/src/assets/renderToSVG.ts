@@ -20,7 +20,8 @@ import type {
   PrintLabelElement,
   ElementPosition,
   CommonData,
-  TextRenderProps
+  TextRenderProps,
+  BatchItem
 } from '@/types/label'
 import { resolveTextProps } from '@/types/label'
 
@@ -382,11 +383,29 @@ function renderImageSVG(src: string, pos: ElementPosition): string {
 }
 
 // ─── Резолвер значения поля ───────────────────────────────────────────────────
+// elements — опционально, нужен для рекурсивного разрешения linkedBarcodeId
 
-function resolveValue(el: PrintLabelElement, data: CommonData, serial?: string): string {
-  if (el.props.isSerial && serial !== undefined) return serial
-  if (el.type === 'barcode') return serial ?? data['serial'] ?? data[el.dataField] ?? ''
-  return data[el.dataField] ?? ''
+function resolveValue(
+  el: PrintLabelElement,
+  data: CommonData,
+  serial?: string,
+  elements?: Record<string, PrintLabelElement>
+): string {
+  if (el.type === 'barcode') {
+    // Для barcode: dataField из common/batch data (может быть итерируемым или обычным)
+    if (data[el.dataField]) return data[el.dataField]
+    return serial ?? data['serial'] ?? ''
+  }
+
+  if (el.type === 'text') {
+    // Текст, связанный с barcode → рекурсивно берём значение barcode
+    if (el.props.linkedBarcodeId && elements?.[el.props.linkedBarcodeId]) {
+      return resolveValue(elements[el.props.linkedBarcodeId], data, serial, elements)
+    }
+    return data[el.dataField] ?? ''
+  }
+
+  return ''
 }
 
 // ─── Одна этикетка → SVG строка ──────────────────────────────────────────────
@@ -409,7 +428,7 @@ export async function renderLabelToSVG(
     if (!pos) continue
 
     if (el.type === 'text') {
-      const fieldValue = resolveValue(el, data, serial)
+      const fieldValue = resolveValue(el, data, serial, elements)
       const tp = resolveTextProps(el.props)
       const font = await loadFont(tp.fontFamily)
 
@@ -461,7 +480,7 @@ export async function renderLabelToSVG(
         )
       }
     } else if (el.type === 'barcode') {
-      const val = resolveValue(el, data, serial)
+      const val = resolveValue(el, data, serial, elements)
       if (val) parts.push(renderBarcodeSVG(el.props.barcodeType ?? 'code128', val, el.props, pos))
     } else if (el.type === 'image') {
       parts.push(renderImageSVG(el.props.src ?? '', pos))
@@ -480,7 +499,7 @@ export async function renderLabelToSVG(
 // ─── Пакет этикеток → HTML-страница с SVG ────────────────────────────────────
 
 export async function renderLabelsToHTML(
-  items: Array<{ serial: string }>,
+  items: BatchItem[],
   common: CommonData,
   templateData: PrintTemplateData
 ): Promise<string> {
@@ -490,7 +509,7 @@ export async function renderLabelsToHTML(
 
   const pages = await Promise.all(
     items.map((item) =>
-      renderLabelToSVG(templateData, { ...common, serial: item.serial }, item.serial)
+      renderLabelToSVG(templateData, { ...common, ...item } as CommonData, item.serial ?? '')
     )
   )
 

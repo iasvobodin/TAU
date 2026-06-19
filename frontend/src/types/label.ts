@@ -34,9 +34,18 @@ const _MM_TO_PX = 3.78
  * Поддерживает миграцию со старых полей paddingX/paddingY (px → мм).
  */
 export function resolveTextProps(props: LabelElementProps): TextRenderProps {
-  // Миграция: старые paddingX/paddingY были в пикселях
-  const legacyPX = props.paddingX != null ? props.paddingX / _MM_TO_PX : 1.0
-  const legacyPY = props.paddingY != null ? props.paddingY / _MM_TO_PX : 0.0
+  // paddingX/paddingY — старый формат (значения в пикселях).
+  // Если paddingX/paddingY НЕ заданы — missing индивидуальные отступы = 0.
+  // Если заданы — применяем миграцию px → мм.
+  const hasLegacyPadding = props.paddingX != null || props.paddingY != null
+
+  let legacyPX = 0
+  let legacyPY = 0
+  if (hasLegacyPadding) {
+    legacyPX = props.paddingX != null ? props.paddingX / _MM_TO_PX : 0
+    legacyPY = props.paddingY != null ? props.paddingY / _MM_TO_PX : 0
+  }
+
   return {
     fontSize: props.fontSize ?? 12,
     fontFamily: props.fontFamily ?? 'Arial',
@@ -81,6 +90,11 @@ export interface LabelElementProps {
   // isSerial: ровно один элемент (text или barcode) используется как
   // серийный номер при пакетной печати.
   isSerial?: boolean
+
+  // linkedBarcodeId: ID barcode-элемента, с которым связан этот текст.
+  // При рендеринге текст будет показывать то же значение, что и связанный barcode.
+  // Устанавливается через Link Brush (кнопка «Связать» → клик на barcode на макете).
+  linkedBarcodeId?: string | null
 
   // ── Штрихкод ───────────────────────────────────────────────────────────────
   barcodeType?: BarcodeType
@@ -150,5 +164,6 @@ export interface CommonData {
 }
 
 export interface BatchItem {
-  serial: string
+  serial?: string
+  [key: string]: string | undefined
 }

@@ -4,6 +4,7 @@ import bwipjs from 'bwip-js'
 import { os, filesystem } from '@neutralinojs/lib'
 import { LabelPrinterMulty } from '@/assets/printLabelMultyСopy'
 import { fontManager } from '@/assets/fontManager'
+import { renderLabelToSVG } from '@/assets/renderToSVG'
 import type { FontInfo } from '@/assets/renderToSVG'
 import type {
   ElementType,
@@ -12,7 +13,8 @@ import type {
   FieldCounters,
   LabelElement,
   LabelSize,
-  TemplateData
+  TemplateData,
+  BatchItem
 } from '@/types/label'
 
 const MM_TO_PX = 3.78
@@ -32,6 +34,17 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
   // Инкрементируется при каждой загрузке шаблона.
   // LabelCanvas подписывается на него и вызывает fitZoom.
   const templateKey = ref(0)
+
+  // Сигнал для LabelCanvas: подогнать масштаб под рабочую область (кнопка «вписать»)
+  const fitZoomTrigger = ref(0)
+
+  // ── Copy Brush (кисточка) ──────────────────────────────────────────────────
+  const copyBrushActive = ref(false)
+  const copyBrushSourceId = ref<string | null>(null)
+
+  // ── Link Brush (связь текста с barcode) ────────────────────────────────────
+  const linkBrushActive = ref(false)
+  const linkBrushSourceId = ref<string | null>(null)
 
   const batchCommonData = ref<Record<string, string>>({})
   const batchSerialsText = ref('261200001-01\n261200002-01\n261200003-01')
@@ -55,9 +68,10 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     }
     fontsLoading.value = false
     fontManager.scan().then(() => {
-      const all = fontManager.getSupportedFonts()
-      if (all.length) {
-        availableFonts.value = all.map((e) => ({
+      // onlyScanned=true — только шрифты, реально найденные на этом компьютере
+      const scanned = fontManager.getSupportedFonts(true)
+      if (scanned.length) {
+        availableFonts.value = scanned.map((e) => ({
           label: e.fullName,
           value: e.fullName,
           svgPreviewPath: e.svgPreviewPath
@@ -93,19 +107,63 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
 
   const templateTextFields = computed(() => {
     const seen = new Set<string>()
-    return Object.values(elements.value)
-      .filter((el) => el.type === 'text' && !el.props.isSerial)
+
+    // Тексты без linkedBarcodeId
+    const texts = Object.values(elements.value)
+      .filter((el) => el.type === 'text' && !el.props.linkedBarcodeId)
       .filter((el) => {
         if (seen.has(el.dataField)) return false
         seen.add(el.dataField)
         return true
       })
       .map((el) => ({ dataField: el.dataField, label: el.dataField }))
+
+    // Barcode без isSerial — каждый может иметь своё значение из common data
+    const barcodes = Object.values(elements.value)
+      .filter((el) => el.type === 'barcode' && !el.props.isSerial)
+      .filter((el) => {
+        if (seen.has(el.dataField)) return false
+        seen.add(el.dataField)
+        return true
+      })
+      .map((el) => ({ dataField: el.dataField, label: el.dataField }))
+
+    return [...texts, ...barcodes]
   })
 
+  // hasSerialInTemplate: только barcode (текст больше не имеет isSerial)
   const hasSerialInTemplate = computed(() =>
-    Object.values(elements.value).some((el) => el.props.isSerial === true)
+    Object.values(elements.value).some((el) => el.type === 'barcode' && el.props.isSerial === true)
   )
+
+  // Итерируемые barcode: список их dataField-ов
+  const iterableFields = computed(() =>
+    Object.values(elements.value)
+      .filter((el) => el.type === 'barcode' && el.props.isSerial)
+      .map((el) => el.dataField)
+  )
+
+  // Многострочные тексты значений для каждого итерируемого barcode
+  const batchIterableTexts = ref<Record<string, string>>({})
+
+  // Количество строк для каждого итерируемого barcode
+  const iterableCounts = computed(() => {
+    const counts: Record<string, number> = {}
+    for (const field of iterableFields.value) {
+      const text = batchIterableTexts.value[field] ?? ''
+      counts[field] = text
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean).length
+    }
+    return counts
+  })
+
+  // Флаг: несовпадение количества строк у итерируемых barcode
+  const iterableCountMismatch = computed(() => {
+    const counts = Object.values(iterableCounts.value).filter((c) => c > 0)
+    return counts.length > 1 && new Set(counts).size > 1
+  })
 
   const serials = computed(() =>
     batchSerialsText.value
@@ -241,14 +299,13 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
           paddingRight: 1.0,
           paddingBottom: 0,
           paddingLeft: 1.0,
-          isSerial: false,
           customText: dataField
         }),
         ...(type === 'barcode' && {
           barcodeType: 'code128',
           barcodeHeight: 6,
           barcodeWidth: 6,
-          barcodeScale: 10,
+          barcodeScale: 2,
           isSerial: false,
           testValue: 'TEST123456'
         }),
@@ -266,12 +323,11 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     if (selectedId.value === id) selectedId.value = null
   }
 
-  function toggleSerial(id: string): void {
+  function toggleBarcodeIterable(id: string): void {
     const el = elements.value[id]
-    if (!el) return
-    const wasSerial = !!el.props.isSerial
-    for (const e of Object.values(elements.value)) e.props.isSerial = false
-    if (!wasSerial) el.props.isSerial = true
+    if (!el || el.type !== 'barcode') return
+    // Просто переключаем, НЕ сбрасываем на других
+    el.props.isSerial = !el.props.isSerial
   }
 
   function renameField(id: string, newPrefix: string): void {
@@ -321,7 +377,7 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
                 paddingRight: el.props.paddingRight,
                 paddingBottom: el.props.paddingBottom,
                 paddingLeft: el.props.paddingLeft,
-                isSerial: el.props.isSerial
+                linkedBarcodeId: el.props.linkedBarcodeId
               }),
               ...(el.type === 'barcode' && {
                 barcodeType: el.props.barcodeType,
@@ -343,11 +399,31 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     }
   }
 
+  /**
+   * Извлекает префикс dataField до суффикса `_N`.
+   * Пример: "serial_barcode" → "serial"
+   */
+  function dataFieldPrefix(dataField: string): string {
+    const m = dataField.match(/^(.+?)(?:_\d+)?$/)
+    return m ? m[1] : dataField
+  }
+
   async function applyTemplateData(parsed: any): Promise<void> {
     if (parsed.labelSize) labelSize.value = parsed.labelSize
 
     if (parsed.positions) {
-      positions.value = parsed.positions
+      // Шаг 4: округляем позиции до 0.1 мм при загрузке
+      const rounded: Record<string, ElementPosition> = {}
+      for (const [id, pos] of Object.entries(parsed.positions)) {
+        const p = pos as ElementPosition
+        rounded[id] = {
+          x: Math.round(p.x * 10) / 10,
+          y: Math.round(p.y * 10) / 10,
+          w: Math.max(0.5, Math.round(p.w * 10) / 10),
+          h: Math.max(0.5, Math.round(p.h * 10) / 10)
+        }
+      }
+      positions.value = rounded
     } else if (parsed.layout) {
       // Миграция старого grid-формата
       const cols = parsed.gridCols ?? 12
@@ -381,6 +457,42 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
         }
       }
       if (el.type === 'barcode') await generateBarcode(elements.value[id])
+    }
+
+    // Шаг 5: нормализация отсутствующих полей у текстовых элементов
+    for (const el of Object.values(elements.value)) {
+      if (el.type === 'text') {
+        const p = el.props
+        if (p.verticalAlign == null) p.verticalAlign = 'middle'
+        if (p.lineHeight == null) p.lineHeight = 1.2
+        if (p.paddingTop == null) p.paddingTop = 0
+        if (p.paddingRight == null) p.paddingRight = 0
+        if (p.paddingBottom == null) p.paddingBottom = 0
+        if (p.paddingLeft == null) p.paddingLeft = 0
+        // Удаляем isSerial из текста — он теперь только на barcode
+        if ('isSerial' in p) delete (p as any).isSerial
+      }
+    }
+
+    // Шаг 2: миграция isSerial со старых текстовых элементов на barcode
+    for (const el of Object.values(elements.value)) {
+      if (el.type === 'text' && el.props.linkedBarcodeId == null) {
+        // Ищем barcode с совпадающим префиксом dataField
+        const textPrefix = dataFieldPrefix(el.dataField)
+        const matchingBarcode = Object.values(elements.value).find(
+          (other) =>
+            other.type === 'barcode' &&
+            !other.props.isSerial &&
+            dataFieldPrefix(other.dataField) === textPrefix
+        )
+        if (matchingBarcode) {
+          matchingBarcode.props.isSerial = true
+          el.props.linkedBarcodeId = matchingBarcode.id
+          console.log(
+            `[migration] isSerial перенесён с текста "${el.dataField}" на barcode "${matchingBarcode.dataField}" (${matchingBarcode.id})`
+          )
+        }
+      }
     }
 
     resetCounters()
@@ -458,10 +570,9 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     const common: Record<string, string> = {}
     let serial = ''
     for (const el of Object.values(elements.value)) {
-      if (el.type === 'text') {
+      if (el.type === 'text' && !el.props.linkedBarcodeId) {
         const val = el.props.customText ?? getDefaultText(el.dataField)
         common[el.dataField] = val
-        if (el.props.isSerial) serial = val
       } else if (el.type === 'barcode' && el.props.isSerial) {
         serial = el.props.testValue ?? ''
       }
@@ -481,20 +592,253 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
       return
     }
 
-    if (!serials.value.length) {
-      alert('Нет серийных номеров для печати')
+    // Batch: собираем items из итерируемых barcode
+    const iterableData: Record<string, string[]> = {}
+    for (const el of Object.values(elements.value)) {
+      if (el.type === 'barcode' && el.props.isSerial) {
+        const text = batchIterableTexts.value[el.dataField] ?? ''
+        iterableData[el.dataField] = text
+          .split(/\r?\n/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+      }
+    }
+
+    const lengths = Object.values(iterableData).map((arr) => arr.length)
+    if (!lengths.length) {
+      alert('Нет итерируемых barcode для пакетной печати')
       return
+    }
+
+    // Валидация: все списки должны быть одинаковой длины
+    if (new Set(lengths).size > 1) {
+      alert(
+        `Ошибка: несовпадение количества значений у итерируемых barcode.\n${Object.entries(
+          iterableData
+        )
+          .map(([k, v]) => `${k}: ${v.length} шт.`)
+          .join('\n')}`
+      )
+      return
+    }
+
+    const count = lengths[0]
+    if (!count) {
+      alert('Нет значений для пакетной печати')
+      return
+    }
+
+    // Строим items — по одному на каждую этикетку
+    const items: BatchItem[] = []
+    for (let i = 0; i < count; i++) {
+      const item: Record<string, string> = {}
+      for (const [field, values] of Object.entries(iterableData)) {
+        item[field] = values[i] ?? ''
+      }
+      items.push(item as BatchItem)
     }
 
     const templateData = buildTemplateData()
     const printFn = svgRenderEnabled.value
       ? printer.printFromTemplateSVG.bind(printer)
       : printer.printFromTemplate.bind(printer)
-    await printFn(
-      serials.value.map((s) => ({ serial: s })),
-      { ...batchCommonData.value } as any,
-      templateData
+    await printFn(items, { ...batchCommonData.value } as any, templateData)
+  }
+
+  // ===== Save SVG =====
+  async function saveSVG(): Promise<void> {
+    const td = buildTemplateData()
+
+    if (!batchPrintEnabled.value) {
+      // ── Одиночный режим ─────────────────────────────────────────────
+      const { items, common } = buildSinglePrintData()
+      try {
+        const svg = await renderLabelToSVG(td, common, items[0]?.serial ?? '')
+        const defaultPath = (lastSavedPath.value || 'label').replace(/\.[^.]+$/, '') + '.svg'
+        const path = await os.showSaveDialog('Сохранить SVG', {
+          defaultPath,
+          filters: [{ name: 'SVG файл', extensions: ['svg'] }]
+        })
+        if (!path) return
+        await filesystem.writeFile(path, svg)
+        alert(`SVG сохранён: ${path.split(/[/\\]/).pop()}`)
+      } catch (e) {
+        console.error('[saveSVG]', e)
+        alert('Ошибка при сохранении SVG')
+      }
+      return
+    }
+
+    // ── Пакетный режим ────────────────────────────────────────────────
+    const iterableData: Record<string, string[]> = {}
+    for (const el of Object.values(elements.value)) {
+      if (el.type === 'barcode' && el.props.isSerial) {
+        const text = batchIterableTexts.value[el.dataField] ?? ''
+        iterableData[el.dataField] = text
+          .split(/\r?\n/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+      }
+    }
+
+    const lengths = Object.values(iterableData).map((arr) => arr.length)
+    if (!lengths.length) {
+      alert('Нет итерируемых barcode для пакетного сохранения')
+      return
+    }
+
+    if (new Set(lengths).size > 1) {
+      alert(
+        `Ошибка: несовпадение количества значений у итерируемых barcode.\n${Object.entries(
+          iterableData
+        )
+          .map(([k, v]) => `${k}: ${v.length} шт.`)
+          .join('\n')}`
+      )
+      return
+    }
+
+    const count = lengths[0]
+    if (!count) {
+      alert('Нет значений для пакетного сохранения')
+      return
+    }
+
+    // Строим items
+    const items: BatchItem[] = []
+    for (let i = 0; i < count; i++) {
+      const item: Record<string, string> = {}
+      for (const [field, values] of Object.entries(iterableData)) {
+        item[field] = values[i] ?? ''
+      }
+      items.push(item as BatchItem)
+    }
+
+    const firstField = Object.keys(iterableData)[0]
+
+    // Выбор папки
+    let folderPath: string
+    try {
+      folderPath = await os.showFolderDialog('Выберите папку для сохранения SVG')
+      if (!folderPath) return
+    } catch (e) {
+      console.error('[saveSVG] showFolderDialog error:', e)
+      alert('Ошибка при выборе папки')
+      return
+    }
+
+    let savedCount = 0
+    for (let i = 0; i < items.length; i++) {
+      try {
+        const itemData = { ...batchCommonData.value, ...items[i] } as any
+        const svg = await renderLabelToSVG(td, itemData, items[i].serial ?? '')
+
+        // Имя файла: из первого итерируемого поля, или label_N
+        let baseName = items[i][firstField]?.trim() ?? ''
+        if (!baseName) baseName = `label_${i + 1}`
+        baseName = baseName.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_')
+        const filePath = `${folderPath}/${baseName}.svg`
+
+        await filesystem.writeFile(filePath, svg)
+        savedCount++
+      } catch (e) {
+        console.error(`[saveSVG] ошибка при сохранении этикетки #${i + 1}:`, e)
+      }
+    }
+
+    alert(
+      `Сохранено ${savedCount} из ${items.length} SVG файлов в папке "${folderPath.split(/[/\\]/).pop()}"`
     )
+  }
+
+  // ===== Copy Brush (кисточка) =====
+  function activateCopyBrush(id: string): void {
+    copyBrushActive.value = true
+    copyBrushSourceId.value = id
+  }
+
+  function deactivateCopyBrush(): void {
+    copyBrushActive.value = false
+    copyBrushSourceId.value = null
+  }
+
+  function applyCopyBrush(targetId: string): void {
+    const srcId = copyBrushSourceId.value
+    if (!srcId || srcId === targetId) {
+      deactivateCopyBrush()
+      return
+    }
+    const src = elements.value[srcId]
+    const tgt = elements.value[targetId]
+    if (!src || !tgt || src.type !== 'text' || tgt.type !== 'text') {
+      deactivateCopyBrush()
+      return
+    }
+
+    // Копируем текстовые props (кроме isSerial, dataField, customText)
+    const propsToCopy: Array<keyof typeof src.props> = [
+      'fontSize',
+      'fontFamily',
+      'bold',
+      'align',
+      'verticalAlign',
+      'lineHeight',
+      'paddingTop',
+      'paddingRight',
+      'paddingBottom',
+      'paddingLeft'
+    ]
+    for (const key of propsToCopy) {
+      ;(tgt.props as any)[key] = (src.props as any)[key]
+    }
+
+    // Копируем размеры w, h (но не x, y)
+    const srcPos = positions.value[srcId]
+    if (srcPos) {
+      const tgtPos = positions.value[targetId]
+      if (tgtPos) {
+        updatePosition(targetId, {
+          x: tgtPos.x,
+          y: tgtPos.y,
+          w: srcPos.w,
+          h: srcPos.h
+        })
+      }
+    }
+
+    deactivateCopyBrush()
+    selectedId.value = targetId
+  }
+
+  // ── Link Brush (связь текста с barcode) ──────────────────────────────────────
+  function activateLinkBrush(id: string): void {
+    linkBrushActive.value = true
+    linkBrushSourceId.value = id
+  }
+  function deactivateLinkBrush(): void {
+    linkBrushActive.value = false
+    linkBrushSourceId.value = null
+  }
+  function applyLinkBrush(targetId: string): void {
+    const srcId = linkBrushSourceId.value
+    if (!srcId || srcId === targetId) {
+      deactivateLinkBrush()
+      return
+    }
+    const src = elements.value[srcId]
+    const tgt = elements.value[targetId]
+    if (!src || !tgt || src.type !== 'text' || tgt.type !== 'barcode') {
+      deactivateLinkBrush()
+      return
+    }
+    // Связываем текст с barcode — текст будет показывать значение barcode
+    src.props.linkedBarcodeId = targetId
+    deactivateLinkBrush()
+    selectedId.value = targetId
+  }
+
+  function triggerFitZoom() {
+    fitZoomTrigger.value++
   }
 
   return {
@@ -502,9 +846,14 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     positions,
     elements,
     selectedId,
+    copyBrushActive,
+    copyBrushSourceId,
+    linkBrushActive,
+    linkBrushSourceId,
     labelSize,
     zoom,
     templateKey,
+    fitZoomTrigger,
     batchCommonData,
     batchSerialsText,
     batchPrintEnabled,
@@ -521,13 +870,17 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     templateTextFields,
     hasSerialInTemplate,
     serials,
+    iterableFields,
+    iterableCounts,
+    iterableCountMismatch,
+    batchIterableTexts,
     // Actions — position
     updatePosition,
     // Actions — elements
     addElement,
     removeElement,
     updateBarcode,
-    toggleSerial,
+    toggleBarcodeIterable,
     renameField,
     splitDataField,
     // Actions — editor
@@ -538,7 +891,19 @@ export const useLabelEditorStore = defineStore('labelEditor', () => {
     saveTemplateAs,
     openTemplate,
     clearTemplate,
+    // Actions — copy brush
+    activateCopyBrush,
+    deactivateCopyBrush,
+    applyCopyBrush,
+    // Actions — link brush
+    activateLinkBrush,
+    deactivateLinkBrush,
+    applyLinkBrush,
+    // Actions — view
+    triggerFitZoom,
     // Actions — print
-    printLabels
+    printLabels,
+    // Actions — save
+    saveSVG
   }
 })

@@ -194,14 +194,15 @@ import type { DirectoryEntry } from '@neutralinojs/lib'
 import { mountServer } from '@/assets/utils/mountServer'
 import { findFileInDirectory } from '@/assets/utils/findFileInDirectory'
 import { getCurrentMonthYear } from './utils/getCurrentMonthYear'
-// Конфигурация
+import { appConfig } from '@/assets/utils/AppConfig'
+// Конфигурация — пути берутся из config.json (с fallback на хардкод)
 const CONFIG = {
   scriptName: 'convert.ps1',
-  convertPath: './convertFolder',
-  resourcesPath: '/frontend/dist/',
-  passportDir: '//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Паспорта',
+  convertPath: appConfig.paths.convertFolder,
+  resourcesPath: appConfig.paths.resourcesPath,
+  passportDir: appConfig.paths.passports,
   searchKey: 'плата 2'
-} as const
+}
 
 function normalizePath(path: string): string {
   return path.replace(/^\/\//, '\\\\').replace(/\//g, '\\')

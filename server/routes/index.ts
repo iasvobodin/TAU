@@ -12,6 +12,7 @@ import partNumberComponentRoutes from "./partNumberComponent";
 import checkListRoutes from "./checkList";
 import defectHistoryRoutes from "./defectHistory";
 import imageRoutes from "./uploadImages";
+import passportRoutes from "./passport";
 import { activeClients, sendToClient } from "../websocket/websocketStore";
 
 export function registerRoutes(app: FastifyInstance) {
@@ -28,6 +29,7 @@ export function registerRoutes(app: FastifyInstance) {
   checkListRoutes(app);
   defectHistoryRoutes(app);
   imageRoutes(app);
+  passportRoutes(app);
 
   app.get("/pid", async (_, reply) => reply.send({ pid: process.pid }));
 
@@ -53,7 +55,7 @@ export function registerRoutes(app: FastifyInstance) {
         lastActive: client.lastActive, // 👈 Доступ к полю lastActive
         // Если бы у вас было поле userId, вы бы использовали:
         // userId: client.userId,
-      })
+      }),
     );
 
     // 4. Отправляем JSON-ответ

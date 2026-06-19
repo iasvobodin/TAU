@@ -51,11 +51,28 @@ function positionToPercent(
 }
 
 // ── Резолвер значения поля ────────────────────────────────────────────────────
+// elements — опционально, нужен для рекурсивного разрешения linkedBarcodeId
 
-function resolveValue(element: PrintLabelElement, data: CommonData, serial?: string): string {
-  if (element.props.isSerial && serial !== undefined) return serial
-  if (element.type === 'barcode') return serial ?? data['serial'] ?? data[element.dataField] ?? ''
-  if (element.type === 'text') return data[element.dataField] ?? ''
+function resolveValue(
+  element: PrintLabelElement,
+  data: CommonData,
+  serial?: string,
+  elements?: Record<string, PrintLabelElement>
+): string {
+  if (element.type === 'barcode') {
+    // Для barcode: dataField из common/batch data (может быть итерируемым или обычным)
+    if (data[element.dataField]) return data[element.dataField]
+    return serial ?? data['serial'] ?? ''
+  }
+
+  if (element.type === 'text') {
+    // Текст, связанный с barcode → рекурсивно берём значение barcode
+    if (element.props.linkedBarcodeId && elements?.[element.props.linkedBarcodeId]) {
+      return resolveValue(elements[element.props.linkedBarcodeId], data, serial, elements)
+    }
+    return data[element.dataField] ?? ''
+  }
+
   return ''
 }
 
@@ -93,7 +110,7 @@ export async function renderLabelToHTML(
     ].join(';')
 
     if (element.type === 'text') {
-      const fieldValue = resolveValue(element, data, serial)
+      const fieldValue = resolveValue(element, data, serial, elements)
       const tp = resolveTextProps(element.props)
 
       // Вертикальное выравнивание через align-items flex-контейнера
@@ -197,7 +214,7 @@ export async function renderLabelsToHTMLPage(
   const [pagesHtml, fontFaceCSS] = await Promise.all([
     Promise.all(
       items.map((item) =>
-        renderLabelToHTML(templateData, { ...common, serial: item.serial }, item.serial)
+        renderLabelToHTML(templateData, { ...common, ...item } as CommonData, item.serial ?? '')
       )
     ),
     buildFontFaceCSS(templateData)

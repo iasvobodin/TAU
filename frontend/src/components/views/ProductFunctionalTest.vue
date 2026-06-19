@@ -23,9 +23,11 @@ import { createDefectHistory } from '@/api/defectHistoryServices'
 import { updateProduct } from '@/api/productServices'
 import { openFileFromNet } from '@/assets/utils/openFileFromNet'
 
-const OK_PATH = import.meta.env.VITE_OK_PATH as string
-const KD_PATH = import.meta.env.VITE_KD_PATH as string
-const OTHER_PATH = import.meta.env.VITE_OTHER_PATH as string
+import { appConfig } from '@/assets/utils/AppConfig'
+
+const OK_PATH = appConfig.paths.okPdf
+const KD_PATH = appConfig.paths.kd
+const OTHER_PATH = appConfig.paths.other
 const emit = defineEmits<{
   (e: 'done'): void
 }>()

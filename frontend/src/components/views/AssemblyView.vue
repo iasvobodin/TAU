@@ -16,6 +16,7 @@ import { transformSpecification } from '@/assets/transformSP'
 import { generatePasport } from '@/assets/generatePasport'
 import { useErrorStore } from '@/stores/errorStore'
 import { useCounterStore } from '@/stores/counter'
+import { findProductBySmartSearch } from '@/assets/utils/serialSearch'
 
 const props = defineProps<{ payload: Record<string, any> }>()
 
@@ -157,6 +158,21 @@ const findTauSerialNumber = async (input: string) => {
     // просто какое-то число из инпута думаем что это корпус
     // Отключаем вывод ошибок перед запросом
     errorStore.disableErrorOutput()
+
+    try {
+      // сперва проверяем нашу китайско иранскую историю,
+      const smartresult = await findProductBySmartSearch(input)
+      if (smartresult) {
+        //нашли что хотели дальше не ищщщем
+        console.log('китайскоиранская сборка')
+        return smartresult
+      } else {
+        console.log('не китайскоиранская сборка, продолжаем поиск')
+      }
+    } catch (error) {
+      console.log('ошибка при поиске smart')
+    }
+
     const result = await tryFetchComponentThenProduct(input)
     // Включаем вывод ошибок обратно
     errorStore.enableErrorOutput()

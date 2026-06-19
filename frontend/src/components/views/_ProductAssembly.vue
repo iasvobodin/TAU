@@ -16,7 +16,7 @@ import { useUserStore } from '@/stores/user'
 import type { ModulesType, Barcodes, ProductType, StageType, Tsp } from '@/assets/interfaces'
 import { printLabel } from '@/assets/printLabel'
 import { server, filesystem, os, events, window as neuWindow } from '@neutralinojs/lib'
-import { notEqual } from 'assert'
+import { appConfig } from '@/assets/utils/AppConfig'
 
 const props = defineProps<{
   information: ProductType['information']
@@ -314,14 +314,12 @@ const serialNumberInput = ref<InstanceType<typeof import('vuetify/components').V
 )
 const readFile = async () => {
   const OK = props.product.template.RE
-  const pdfData = await filesystem.readBinaryFile(
-    `\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\Операционные карты\\${OK}.pdf`
-  )
+  const pdfData = await filesystem.readBinaryFile(`${appConfig.paths.ok}/${OK}.pdf`)
   console.log(pdfData)
 }
 const openPdfInHtml = async () => {
   const OK = props.product.template.RE // Номер операционной карты
-  const pdfPath = `\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\Операционные карты\\${OK}.pdf`
+  const pdfPath = `${appConfig.paths.ok}/${OK}.pdf`
 
   // 1. Чтение PDF-файла
   let pdfData
@@ -488,9 +486,8 @@ const openFile = async () => {
   await openPdfInHtml()
 
   const OK = props.product.template.RE
-  os.execCommand(
-    `explorer "\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\Операционные карты\\${OK}.pdf"`
-  )
+  const okDir = appConfig.paths.ok.replace(/\//g, '\\')
+  os.execCommand(`explorer "${okDir}\\${OK}.pdf"`)
 }
 onMounted(() => {
   serialNumberInput.value?.$el.querySelector('input')?.focus()

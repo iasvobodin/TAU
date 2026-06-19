@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { reactive, watch, ref, onMounted, type Ref } from 'vue'
+import { appConfig } from '@/assets/utils/AppConfig'
 
 import { genSN } from '@/assets/generateSN'
 import { createDocWithBarcodes } from '@/assets/barcodeGenerator'
@@ -31,7 +32,7 @@ watch(
 
 const specification_qty = ref('')
 const allMatch = ref(false)
-const OK_PATH = import.meta.env.VITE_OK_PATH as string
+const OK_PATH = appConfig.paths.okPdf
 
 type Barcodes = {
   barcode: string // znp.data.snProduct
@@ -345,9 +346,8 @@ const serialNumberInput = ref<InstanceType<typeof import('vuetify/components').V
   null
 )
 const openFile = async () => {
-  os.execCommand(
-    `explorer "\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\Софт\\прикладные документы\\TSC 300 руководство пользователя.pdf"`
-  )
+  const otherDir = appConfig.paths.other.replace(/\//g, '\\')
+  os.execCommand(`explorer "${otherDir}\\TSC 300 руководство пользователя.pdf"`)
 }
 onMounted(() => {
   serialNumberInput.value?.$el.querySelector('input')?.focus()

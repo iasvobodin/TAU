@@ -10,6 +10,7 @@ import * as directives from 'vuetify/directives'
 import { init, events, app } from '@neutralinojs/lib'
 import { useWebSocketStore } from './stores/websockets'
 import { useUserStore } from './stores/user'
+import { appConfig } from '@/assets/utils/AppConfig'
 
 const vuetify = createVuetify({
   defaults: {
@@ -28,18 +29,16 @@ const wsStore = useWebSocketStore()
 const userStore = useUserStore()
 console.log('we are here')
 
-userStore.getUserENV().then(() => {
-  wsStore.connect()
-  userStore.getUserName()
+// Загружаем центральный конфиг путей перед инициализацией
+appConfig.load().then(() => {
+  userStore.initAuth().then(() => {
+    if (userStore.isAuthorized) {
+      wsStore.connect()
+    }
+  })
 })
 
 init()
 events.on('windowClose', () => {
-  // wsStore.send({
-  //   command: 'appClientDisconnect',
-  //   timestamp: new Date().toISOString(),
-  //   user: userStore.userName,
-  //   fullName: userStore.userFullName || null
-  // })
   app.exit()
 })

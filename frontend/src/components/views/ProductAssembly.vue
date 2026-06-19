@@ -14,6 +14,7 @@ import type { ModulesType, Barcodes, ProductType, StageType, Tsp } from '@/asset
 import { findFileInDirectory } from '@/assets/utils/findFileInDirectory'
 import { printLabel } from '@/assets/printLabel'
 import { printPassport } from '@/assets/docxProcessor'
+import { convertPassportWithTemplate, getPdfFullUrl, checkSoffice } from '@/assets/passportClient'
 import {
   server,
   filesystem,
@@ -28,6 +29,7 @@ import { openSecondWindow } from '@/assets/utils/openSecondWindow'
 import { useCounterStore } from '@/stores/counter'
 import { useWebSocketStore } from '@/stores/websockets'
 import { LabelPrinterMulty } from '@/assets/printLabelMulty'
+import { appConfig } from '@/assets/utils/AppConfig'
 
 const props = defineProps<{
   information: ProductType['information']
@@ -52,9 +54,9 @@ const comment = ref('')
 const assemblyPassedDialog = ref(false)
 const checkLable = ref(false)
 const checkPasport = ref(false)
-const OK_PATH = import.meta.env.VITE_OK_PATH as string
-const KD_PATH = import.meta.env.VITE_KD_PATH as string
-const OTHER_PATH = import.meta.env.VITE_OTHER_PATH as string
+const OK_PATH = appConfig.paths.okPdf
+const KD_PATH = appConfig.paths.kd
+const OTHER_PATH = appConfig.paths.other
 
 const findPartNumberInSpecification = (item: string) => {
   return props.product.productPartNumbers.find((e) => e === item)
@@ -263,15 +265,13 @@ const serialNumberInput = ref<InstanceType<typeof import('vuetify/components').V
 
 const readFile = async () => {
   const OK = props.product.template.RE
-  const pdfData = await filesystem.readBinaryFile(
-    `\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\Операционные карты\\${OK}.pdf`
-  )
+  const pdfData = await filesystem.readBinaryFile(`${appConfig.paths.ok}/${OK}.pdf`)
   console.log(pdfData)
 }
 
 const openPdfInHtml = async () => {
   const OK = props.product.template.RE
-  const pdfPath = `\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\Операционные карты\\${OK}.pdf`
+  const pdfPath = `${appConfig.paths.ok}/${OK}.pdf`
 
   let pdfData
   try {
@@ -363,17 +363,15 @@ const openPdfInHtml = async () => {
 const openFile = async () => {
   await openPdfInHtml()
   const OK = props.product.template.RE
-  os.execCommand(
-    `explorer "\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\Операционные карты\\${OK}.pdf"`
-  )
+  const okDir = appConfig.paths.ok.replace(/\//g, '\\')
+  os.execCommand(`explorer "${okDir}\\${OK}.pdf"`)
 }
 
 const openFileKD = async () => {
   // await openPdfInHtml()
   const KD = props.product.checkList?.doc_ConstructKD
-  os.execCommand(
-    `explorer "\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\КД\\${KD}.pdf"`
-  )
+  const kdDir = appConfig.paths.kd.replace(/\//g, '\\')
+  os.execCommand(`explorer "${kdDir}\\${KD}.pdf"`)
 }
 
 function normalizeUncPath(input: string): string {
@@ -442,8 +440,7 @@ const openFileOK2 = async () => {
     return
   }
 
-  const baseDir =
-    '//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Операционные карты/ОК PDF'
+  const baseDir = appConfig.paths.okPdf
 
   try {
     const fileEntry = await findFileInDirectory(fileName, baseDir)
@@ -514,9 +511,7 @@ const printPasport = async (partNumber: string) => {
   }
 
   try {
-    const dirTAU = await filesystem.readDirectory(
-      '//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Паспорта'
-    )
+    const dirTAU = await filesystem.readDirectory(appConfig.paths.passports)
 
     const filteredFile = dirTAU.find(
       (item) => item.type === 'FILE' && item.entry.includes(partNumber)
@@ -753,6 +748,96 @@ const openPrintPassportWindow = async (): Promise<void> => {
   }
 }
 
+/**
+ * Печать отгрузочного паспорта через сервер (LibreOffice).
+ * Альтернатива локальной конвертации через ps1 + Word COM.
+ * Не ломает существующий конвейер.
+ */
+const printPassportOnServer = async (): Promise<void> => {
+  const partNumber = props.information?.['Артикул изделия']
+  if (!partNumber) {
+    console.log('[passport-server] нет артикула')
+    return
+  }
+
+  const serialNumber = getSerialNumber(
+    props.product.specification,
+    props.information?.['Тип изделия']
+  )
+  if (serialNumber === '') {
+    console.log('[passport-server] нет SN')
+    return
+  }
+
+  console.log(`[passport-server] Печать: ${partNumber} / ${serialNumber}`)
+
+  // Сначала проверяем, доступен ли LibreOffice на сервере
+  const sofficeCheck = await checkSoffice()
+  if (!sofficeCheck.available) {
+    alert(`LibreOffice на сервере не доступен: ${sofficeCheck.error}`)
+    return
+  }
+
+  // ── Ищем шаблон на сетевой папке (через Neutralino — у клиента есть доступ) ──
+  const passportDir = appConfig.paths.passports
+  console.log(`[passport-server] Поиск шаблона в: ${passportDir}`)
+  const foundTemplate = await findFileInDirectory(partNumber, passportDir)
+
+  if (!foundTemplate) {
+    alert(`Шаблон для артикула "${partNumber}" не найден в ${passportDir}`)
+    return
+  }
+  console.log(`[passport-server] Найден шаблон: ${foundTemplate.entry}`)
+
+  // ── Читаем шаблон и кодируем в Base64 ──
+  let templateBase64: string
+  try {
+    const templateBytes = await filesystem.readBinaryFile(foundTemplate.path)
+    const binary = new Uint8Array(templateBytes)
+    // Конвертируем ArrayBuffer в Base64 через бинарную строку
+    let binaryStr = ''
+    for (let i = 0; i < binary.length; i++) {
+      binaryStr += String.fromCharCode(binary[i])
+    }
+    templateBase64 = btoa(binaryStr)
+    console.log(`[passport-server] Шаблон прочитан: ${templateBase64.length} символов base64`)
+  } catch (err) {
+    console.error('[passport-server] Ошибка чтения шаблона:', err)
+    alert('Ошибка чтения шаблона')
+    return
+  }
+
+  // ── Конвертируем на сервере (передаём шаблон) ──
+  const result = await convertPassportWithTemplate(partNumber, [serialNumber], templateBase64)
+
+  if (!result.success) {
+    alert(`Ошибка серверной конвертации: ${result.error}`)
+    return
+  }
+
+  // Сохраняем PDF локально в convertFolder и открываем через secondWindow
+  if (result.pdfUrl) {
+    const fullUrl = getPdfFullUrl(result.pdfUrl)
+    const pdfName = `${partNumber}__${serialNumber}.pdf`
+
+    try {
+      // Скачиваем PDF с сервера
+      const pdfResponse = await fetch(fullUrl)
+      const pdfBlob = await pdfResponse.arrayBuffer()
+
+      // Сохраняем локально (как и раньше через ps1)
+      const savePath = `${appConfig.paths.convertFolder}/${pdfName}`
+      await filesystem.writeBinaryFile(savePath, pdfBlob)
+      console.log(`[passport-server] PDF сохранён локально: ${savePath}`)
+    } catch (err) {
+      console.warn('[passport-server] Не удалось сохранить PDF локально:', err)
+    }
+
+    // Открываем через secondWindow (как и старая кнопка)
+    await openSecondWindow('./convertFolder', pdfName, '/convertFolder')
+  }
+}
+
 // const printer = new LabelPrinterMulty(window.NL_PATH)
 
 const tryPrint = async () => {
@@ -913,6 +998,20 @@ onMounted(() => {
         </v-btn>
       </v-col>
     </v-row>
+
+    <v-row
+      v-if="
+        props.information?.['Тип изделия'] !== 'TerminalBlocks' &&
+        props.information?.['Тип изделия'] !== 'SupportPanels'
+      "
+    >
+      <v-col>
+        <v-btn @click="printPassportOnServer" color="primary" variant="outlined" block>
+          Печать отгрузочного паспорта (сервер)
+        </v-btn>
+      </v-col>
+    </v-row>
+
     <!-- <v-row>
       <v-col>
         <v-btn

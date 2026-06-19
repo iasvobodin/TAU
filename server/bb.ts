@@ -48,7 +48,7 @@ async function backupDatabase() {
 
     // Записываем в файл с форматированием
     await fs.writeFile(
-      "prisma-backup 02.06.2026.json",
+      "prisma-backup 11.06.2026.json",
       JSON.stringify(data, null, 2),
     );
 

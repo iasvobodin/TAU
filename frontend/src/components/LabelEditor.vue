@@ -6,8 +6,16 @@ import LabelSizePanel from './label-editor/LabelSizePanel.vue'
 import AddElementPanel from './label-editor/AddElementPanel.vue'
 import ElementPropsPanel from './label-editor/ElementPropsPanel.vue'
 import LabelCanvas from './label-editor/LabelCanvas.vue'
-import PrintDataPanel from './label-editor/PrintDataPanel.vue'
-
+import BatchDataPanel from './label-editor/BatchDataPanel.vue'
+import PrintActionsBar from './label-editor/PrintActionsBar.vue'
+import {
+  filesystem,
+  os,
+  resources,
+  extensions,
+  window as neuWindow,
+  events
+} from '@neutralinojs/lib'
 const store = useLabelEditorStore()
 const { lastSavedPath } = storeToRefs(store)
 
@@ -27,7 +35,10 @@ function onOutsideClick(e: MouseEvent) {
   const target = e.target as HTMLElement
   if (!target.closest('.tmpl-menu-wrap')) menuOpen.value = false
 }
-onMounted(() => document.addEventListener('mousedown', onOutsideClick))
+
+onMounted(() => {
+  document.addEventListener('mousedown', onOutsideClick)
+})
 onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
 </script>
 
@@ -104,23 +115,25 @@ onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
           <LabelSizePanel />
           <div class="sidebar-divider" />
           <AddElementPanel />
+          <div class="sidebar-divider" />
+          <BatchDataPanel />
         </div>
       </div>
 
       <!-- ── Рабочая область ──────────────────────────────────────────────── -->
       <div class="app-workspace">
-        <!-- Риббон свойств элемента — фиксирован сверху рабочей области -->
-        <ElementPropsPanel />
+        <!-- Риббон свойств элемента — overlay поверх канваса -->
+        <div class="ribbon-wrap">
+          <ElementPropsPanel />
+        </div>
 
         <!-- Канвас -->
         <div class="canvas-scroll">
           <LabelCanvas />
         </div>
 
-        <!-- Панель печати — внизу -->
-        <div class="print-panel">
-          <PrintDataPanel />
-        </div>
+        <!-- Панель действий печати — внизу -->
+        <PrintActionsBar />
       </div>
     </div>
   </div>
@@ -377,20 +390,27 @@ onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
   overflow: hidden;
   min-width: 0;
   background: #e8ecf0;
+  position: relative; /* для абсолютного позиционирования ribbon-wrap */
+}
+
+/* Риббон свойств элемента — overlay поверх канваса */
+.ribbon-wrap {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
 }
 
 .canvas-scroll {
   flex: 1;
+  display: flex;
+  flex-direction: column;
   overflow: auto;
   min-height: 0;
+  padding-top: 46px; /* высота всегда видимого первого ряда ribbon-root (.rbn-type) */
 }
 
-/* ── Print panel ─────────────────────────────────────────────────────────── */
-.print-panel {
-  border-top: 1px solid #d4d8de;
-  background: #f4f6f8;
-  overflow-y: auto;
-  max-height: 300px;
-  flex-shrink: 0;
-}
+/* ── Print actions bar ───────────────────────────────────────────────────── */
+/* PrintActionsBar — самостоятельный компонент с scoped-стилями */
 </style>

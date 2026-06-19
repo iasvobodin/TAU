@@ -6,7 +6,8 @@ import { useLabelEditorStore } from '@/stores/labelEditor'
 import { ensureFontFace } from '@/assets/renderToSVG'
 
 const store = useLabelEditorStore()
-const { selectedElement, selectedId, availableFonts, fontsLoading, positions } = storeToRefs(store)
+const { selectedElement, selectedId, availableFonts, fontsLoading, positions, linkBrushActive } =
+  storeToRefs(store)
 const { splitDataField } = store
 
 const selectedPos = computed(() =>
@@ -47,6 +48,9 @@ const hasSelection = computed(() => !!selectedElement.value)
 const isText = computed(() => selectedElement.value?.type === 'text')
 const isBarcode = computed(() => selectedElement.value?.type === 'barcode')
 const isImage = computed(() => selectedElement.value?.type === 'image')
+
+// Есть ли хотя бы один штрихкод в шаблоне (для кнопки «Связать»)
+const hasBarcode = computed(() => Object.values(store.elements).some((el) => el.type === 'barcode'))
 
 function onTextInput(v: string) {
   if (isText.value) selectedElement.value!.props.customText = v
@@ -116,6 +120,20 @@ async function pickImageFile() {
         <div class="chip chip--text">
           <v-icon size="12">mdi-format-text</v-icon><span>Текст</span>
         </div>
+
+        <!-- ── Кнопка «Кисточка» (Copy Brush) ──────────────────────────────── -->
+        <v-tooltip text="Копировать настройки на другой блок" location="bottom">
+          <template #activator="{ props: tp }">
+            <button
+              v-bind="tp"
+              :class="['btn', 'btn--lbl', { 'btn--on': store.copyBrushActive }]"
+              @click="store.activateCopyBrush(selectedId!)"
+            >
+              <v-icon size="14">mdi-format-paint</v-icon><span>Кисточка</span>
+            </button>
+          </template>
+        </v-tooltip>
+
         <div class="sep" />
 
         <div class="ctrl-group" style="gap: 4px">
@@ -283,25 +301,38 @@ async function pickImageFile() {
         </div>
         <div class="sep" />
 
+        <!-- Link Brush: привязка текста к конкретному barcode -->
         <div class="ctrl-group">
           <v-tooltip
             :text="
-              selectedElement!.props.isSerial
-                ? 'Убрать: серийный номер'
-                : 'Использовать как серийный номер'
+              linkBrushActive
+                ? 'Кликните на barcode на макете'
+                : selectedElement!.props.linkedBarcodeId
+                  ? 'Изменить связь с barcode'
+                  : 'Связать с barcode: нажмите, затем кликните на barcode'
             "
             location="bottom"
           >
             <template #activator="{ props: tp }">
               <button
                 v-bind="tp"
-                :class="['btn', 'btn--lbl', { 'btn--serial': selectedElement!.props.isSerial }]"
-                @click="store.toggleSerial(selectedId!)"
+                :class="[
+                  'btn',
+                  'btn--lbl',
+                  { 'btn--link': !!selectedElement!.props.linkedBarcodeId }
+                ]"
+                :disabled="!hasBarcode"
+                @click="store.activateLinkBrush(selectedId!)"
               >
-                <v-icon size="14">mdi-pound</v-icon><span>SN</span>
+                <v-icon size="14">mdi-link-variant</v-icon>
+                <span>{{ linkBrushActive ? '→ клик' : 'Связать' }}</span>
               </button>
             </template>
           </v-tooltip>
+          <!-- Индикатор: показать ID связанного barcode -->
+          <span v-if="selectedElement!.props.linkedBarcodeId && !linkBrushActive" class="link-hint">
+            → {{ selectedElement!.props.linkedBarcodeId.slice(0, 6) }}…
+          </span>
         </div>
         <div class="sep" />
 
@@ -401,6 +432,26 @@ async function pickImageFile() {
             @input="store.updateBarcode(selectedId!)"
           />
         </div>
+        <div class="ctrl-group">
+          <v-tooltip
+            :text="
+              selectedElement!.props.isSerial
+                ? 'Убрать: серийный номер'
+                : 'Использовать как серийный номер'
+            "
+            location="bottom"
+          >
+            <template #activator="{ props: tp }">
+              <button
+                v-bind="tp"
+                :class="['btn', 'btn--lbl', { 'btn--serial': selectedElement!.props.isSerial }]"
+                @click="store.toggleBarcodeIterable(selectedId!)"
+              >
+                <v-icon size="14">mdi-pound</v-icon><span>SN</span>
+              </button>
+            </template>
+          </v-tooltip>
+        </div>
       </template>
 
       <!-- Изображение -->
@@ -455,8 +506,8 @@ async function pickImageFile() {
     <!-- /rbn-type -->
 
     <!-- ══ Строка 2: паддинги + геометрия + хвост ════════════════════════
-         repeat(auto-fill, minmax(260px, 1fr)) — ячейки перетекают сами.
-         На широком экране — одна строка, на узком — несколько.
+         flexbox с wrap — блоки текут естественно.
+         На широком экране — одна строка, на узком — переносятся.
     ════════════════════════════════════════════════════════════════════ -->
     <div v-if="hasSelection" class="rbn-secondary">
       <!-- Паддинги (только текст) -->
@@ -466,7 +517,7 @@ async function pickImageFile() {
             ><v-icon v-bind="tp" size="13" color="#7a8a9a">mdi-crop-square</v-icon></template
           >
         </v-tooltip>
-        <div class="spinbox" style="width: 58px">
+        <div class="spinbox" style="width: 82px">
           <input
             v-model.number="selectedElement!.props.paddingTop"
             type="number"
@@ -477,7 +528,7 @@ async function pickImageFile() {
             title="Сверху (мм)"
           /><span class="spinbox__un">↑</span>
         </div>
-        <div class="spinbox" style="width: 58px">
+        <div class="spinbox" style="width: 82px">
           <input
             v-model.number="selectedElement!.props.paddingRight"
             type="number"
@@ -488,7 +539,7 @@ async function pickImageFile() {
             title="Справа (мм)"
           /><span class="spinbox__un">→</span>
         </div>
-        <div class="spinbox" style="width: 58px">
+        <div class="spinbox" style="width: 82px">
           <input
             v-model.number="selectedElement!.props.paddingBottom"
             type="number"
@@ -499,7 +550,7 @@ async function pickImageFile() {
             title="Снизу (мм)"
           /><span class="spinbox__un">↓</span>
         </div>
-        <div class="spinbox" style="width: 58px">
+        <div class="spinbox" style="width: 82px">
           <input
             v-model.number="selectedElement!.props.paddingLeft"
             type="number"
@@ -515,7 +566,7 @@ async function pickImageFile() {
       <!-- Геометрия X / Y / W / H -->
       <div class="sec-cell sec-cell--geo">
         <span class="geo-lbl">X</span>
-        <div class="spinbox" style="width: 64px">
+        <div class="spinbox" style="width: 78px">
           <input
             :value="selectedPos?.x.toFixed(1)"
             type="number"
@@ -527,7 +578,7 @@ async function pickImageFile() {
           /><span class="spinbox__un">мм</span>
         </div>
         <span class="geo-lbl">Y</span>
-        <div class="spinbox" style="width: 64px">
+        <div class="spinbox" style="width: 78px">
           <input
             :value="selectedPos?.y.toFixed(1)"
             type="number"
@@ -540,7 +591,7 @@ async function pickImageFile() {
         </div>
         <div class="geo-vsep" />
         <span class="geo-lbl">W</span>
-        <div class="spinbox" style="width: 64px">
+        <div class="spinbox" style="width: 78px">
           <input
             :value="selectedPos?.w.toFixed(1)"
             type="number"
@@ -552,7 +603,7 @@ async function pickImageFile() {
           /><span class="spinbox__un">мм</span>
         </div>
         <span class="geo-lbl">H</span>
-        <div class="spinbox" style="width: 64px">
+        <div class="spinbox" style="width: 78px">
           <input
             :value="selectedPos?.h.toFixed(1)"
             type="number"
@@ -609,17 +660,15 @@ async function pickImageFile() {
   display: flex;
   flex-direction: column;
   width: 100%;
-  flex-shrink: 0;
   background: linear-gradient(180deg, #f8f8f8 0%, #eeeeee 100%);
-  border-bottom: 1px solid #c0c0c0;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.09);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.18);
   font-family: 'Segoe UI', system-ui, sans-serif;
   font-size: 11px;
   color: #2a2a2a;
   user-select: none;
 }
 .ribbon-root--idle {
-  opacity: 0.7;
+  opacity: 0.5;
 }
 
 /* ── Строка 1 ─────────────────────────────────────────────────────────────── */
@@ -648,10 +697,11 @@ async function pickImageFile() {
   На 500px: 1 ячейка в строке → каждый блок на своей строке.
 */
 .rbn-secondary {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 4px 0;
+  justify-content: flex-start;
+  gap: 4px 16px;
   padding: 4px 10px;
   border-top: 1px solid #d4d4d4;
   background: linear-gradient(180deg, #f2f2f2 0%, #e9e9e9 100%);
@@ -665,14 +715,20 @@ async function pickImageFile() {
   gap: 4px;
   padding: 0 4px;
   min-height: 28px;
+  flex: 0 1 auto;
+  min-width: 240px;
 }
 
 /* Геометрия: небольшой визуальный контейнер */
 .sec-cell--geo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
   background: #f0f3f8;
   border: 1px solid #dce3ed;
   border-radius: 4px;
-  padding: 0 8px;
+  padding: 2px 8px;
 }
 
 /* Хвост (имя поля + удалить) выравниваем вправо внутри своей ячейки */
@@ -776,6 +832,22 @@ async function pickImageFile() {
   background: #ffe0b2;
   border-color: #fb8c00;
 }
+.btn--link {
+  background: #e8eaf6;
+  border-color: #7986cb;
+  color: #283593;
+  font-weight: 600;
+}
+.btn--link:hover {
+  background: #c5cae9;
+  border-color: #5c6bc0;
+}
+.link-hint {
+  font-size: 10px;
+  color: #283593;
+  white-space: nowrap;
+  font-family: 'Consolas', monospace;
+}
 .btn--del:hover {
   background: #fde8e8;
   border-color: #f0b0b0;
@@ -788,15 +860,19 @@ async function pickImageFile() {
 }
 .font-select :deep(.v-field) {
   font-size: 12px;
-  height: 28px;
+  min-height: 28px;
   border-radius: 3px;
   background: #fff;
 }
 .font-select :deep(.v-field__input) {
   padding-top: 2px;
   padding-bottom: 2px;
-  min-height: unset;
   font-size: 12px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.font-select :deep(.v-field__append-inner) {
+  align-items: center;
 }
 .font-select :deep(.v-field__outline__start),
 .font-select :deep(.v-field__outline__end),

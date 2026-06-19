@@ -4,6 +4,7 @@ import type { StageType, ProductType, ProductAllPayload, Tsp } from '@/assets/in
 import ProductInformation from '@/components/ProductInformation.vue'
 import type { Ref } from 'vue'
 import type { Component, Prisma } from '../../../../shared/src'
+import { appConfig } from '@/assets/utils/AppConfig'
 import {
   createProductionOperationPassed,
   createProductionOperationFailed
@@ -17,7 +18,7 @@ import { os, filesystem, server, events, window as neuWindow } from '@neutralino
 import { usePartNumberComponents } from '@/stores/partNumberComponents'
 import { openFileFromNet } from '@/assets/utils/openFileFromNet'
 
-const OK_PATH = import.meta.env.VITE_OK_PATH as string
+const OK_PATH = appConfig.paths.okPdf
 const props = defineProps<{
   information: ProductType['information']
   product: Tsp
@@ -213,9 +214,8 @@ onMounted(() => {
   }
 })
 const openFolder = () => {
-  os.execCommand(
-    'explorer "\\\\rucekaspinffs05.metran.local\\Dept-MP\\Production\\Internal\\Продукты\\ТАУ\\Наклейки\\Гравировка"'
-  )
+  const markingDir = appConfig.paths.marking.replace(/\//g, '\\')
+  os.execCommand(`explorer "${markingDir}"`)
 }
 </script>
 

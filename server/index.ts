@@ -12,6 +12,7 @@ import testRoutes from "./routes/test";
 import partNumberComponentRoutes from "./routes/partNumberComponent";
 import checkListRoutes from "./routes/checkList";
 import defectHistoryRoutes from "./routes/defectHistory";
+import passportRoutes from "./routes/passport";
 import { config } from "dotenv";
 import { registerClient, createLogger } from "./logger";
 import imageRoutes from "./routes/uploadImages";
@@ -38,8 +39,14 @@ const clients = new Map<
 const app = await buildApp(options);
 
 app.addHook("preHandler", (request, reply, done) => {
-  const publicRoutes = ["/pid", "/ws"];
-  if (publicRoutes.includes(request.url)) {
+  const publicRoutes = [
+    "/pid",
+    "/ws",
+    "/api/passport/check-soffice",
+    "/api/passport/convert",
+    "/api/passport/pdf",
+  ];
+  if (publicRoutes.some((route) => request.url.startsWith(route))) {
     done();
     return;
   }
@@ -63,6 +70,7 @@ partNumberComponentRoutes(app);
 checkListRoutes(app);
 defectHistoryRoutes(app);
 imageRoutes(app);
+passportRoutes(app);
 
 app.post("/shutdown", async (request, reply) => {
   const clientApiKey = request.headers["x-api-key"];
@@ -135,7 +143,7 @@ const startServer = async (port: number | undefined) => {
             if (data.user) {
               clients.delete(data.user);
               console.log(
-                `Клиент ${data.user} отключён. Активных клиентов: ${clients.size}`
+                `Клиент ${data.user} отключён. Активных клиентов: ${clients.size}`,
               );
             }
           } else if (data.command === "heartbeat") {
@@ -162,7 +170,7 @@ const startServer = async (port: number | undefined) => {
         if (clientId) {
           clients.delete(clientId);
           console.log(
-            `Клиент ${clientId} отключён. Активных клиентов: ${clients.size}`
+            `Клиент ${clientId} отключён. Активных клиентов: ${clients.size}`,
           );
         }
       });
@@ -173,7 +181,7 @@ const startServer = async (port: number | undefined) => {
           clients.delete(clientId);
         }
       });
-    }
+    },
   );
 
   try {

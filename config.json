@@ -1,0 +1,17 @@
+{
+    "$schema": "./config.schema.json",
+    "version": "1.0.0",
+    "paths": {
+        "ok": "//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Операционные карты",
+        "okPdf": "//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Операционные карты/ОК PDF",
+        "kd": "//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/КД",
+        "passports": "//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Паспорта",
+        "marking": "//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Наклейки/Гравировка",
+        "other": "//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Софт/прикладные документы",
+        "convertFolder": "./convertFolder",
+        "resourcesPath": "/frontend/dist/"
+    },
+    "services": {
+        "wsUrl": "10.69.19.59:3000"
+    }
+}

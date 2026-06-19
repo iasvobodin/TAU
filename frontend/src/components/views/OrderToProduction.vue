@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { fetchAllProduct, fetchProductByOrderToProduction } from '@/api/productServices'
 import { onMounted, ref, reactive, computed } from 'vue'
-import { processMissingOperations } from '@/assets/processMissingOperations'
+import {
+  auditAndFixUserConflicts,
+  processMissingOperations
+} from '@/assets/processMissingOperations'
 import type { Sp } from '@/assets/interfaces'
 import { fetchSpecification } from '@/api/specificationServices'
 import type { Operation } from '../../../../shared/src'
@@ -156,10 +159,22 @@ const totalUnfinishedOperations = computed(() => {
 
 const checkOperations = async (dry: boolean = true) => {
   const result = await fetchAllProduct()
-  console.log(result.data)
+  // console.log(result.data)
 
   try {
     await processMissingOperations(result.data!, dry)
+    console.log('allDone')
+  } catch (error) {
+    console.log(error)
+  }
+}
+
+const checkUserConflicts = async (dry: boolean = true) => {
+  const result = await fetchAllProduct()
+  console.log(result.data)
+
+  try {
+    await auditAndFixUserConflicts(result.data!, dry)
     console.log('allDone')
   } catch (error) {
     console.log(error)
@@ -177,6 +192,11 @@ onMounted(async () => {})
     </v-row>
     <v-row class="mb-4">
       <v-btn block @click="checkOperations(true)">Проверка операций по всем ордерам</v-btn>
+    </v-row>
+    <v-row class="mb-4">
+      <v-btn block @click="checkUserConflicts(true)"
+        >Проверка операций конфликт пользователей</v-btn
+      >
     </v-row>
 
     <v-row align="center" justify="center">

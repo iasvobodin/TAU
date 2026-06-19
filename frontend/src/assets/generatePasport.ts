@@ -240,8 +240,8 @@ export const generatePasport = async (
         }
       }
     })
-
-    const fileName = `Паспорт технологический ${productSerialNumber.endsWith('-02') ? productSerialNumber.slice(0, -3) : productSerialNumber}.docx`
+    const fileName = `Паспорт технологический ${productSerialNumber.endsWith('-01') || productSerialNumber.endsWith('-02') ? productSerialNumber.slice(0, -3) : productSerialNumber}.docx`
+    // const fileName = `Паспорт технологический ${productSerialNumber.endsWith('-02') ? productSerialNumber.slice(0, -3) : productSerialNumber}.docx`
     const blob = await Packer.toBlob(doc)
     const arrayBuffer = await blob.arrayBuffer()
     const savePath = await os.showSaveDialog('Сохранить файл', {

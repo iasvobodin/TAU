@@ -35,6 +35,17 @@ watch(
   }
 )
 
+// При успешной авторизации (login mode) подключаем WebSocket
+watch(
+  () => userStore.isAuthorized,
+  async (authorized) => {
+    if (authorized && !wsStore.connected) {
+      await userStore.getUserENV()
+      wsStore.connect()
+    }
+  }
+)
+
 async function handleSaveFullName(fullName: string) {
   try {
     const saveUser = await userStore.saveFullName(fullName)
@@ -100,7 +111,31 @@ onUnmounted(() => {
 
 <template>
   <ErrorComponent />
+
   <RouterView />
+
+  <v-dialog v-model="userStore.isSystemAuthOpen" max-width="500px" persistent>
+    <v-card
+      class="d-flex flex-column align-center justify-center"
+      color="background"
+      style="background: rgba(15, 15, 21, 0.85); backdrop-filter: blur(10px)"
+    >
+      <v-card-text class="text-center">
+        <v-progress-circular
+          indeterminate
+          color="primary"
+          size="64"
+          class="mb-6"
+        ></v-progress-circular>
+
+        <h2 class="text-h4 mb-2" style="color: red">Подтверждение доступа</h2>
+        <p class="text-body-1 text-muted" style="color: #b3b3b3; max-width: 400px; margin: 0 auto">
+          Пожалуйста, подтвердите вашу учетную запись в появившемся окне Windows Безопасность.
+        </p>
+      </v-card-text>
+    </v-card>
+  </v-dialog>
+
   <v-dialog v-model="showUserDialog" max-width="500px" persistent>
     <v-card>
       <v-card-title><span class="text-h5">Введите ФИО</span></v-card-title>

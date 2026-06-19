@@ -5,20 +5,10 @@ import { useLabelEditorStore } from '@/stores/labelEditor'
 const store = useLabelEditorStore()
 const { labelSize, zoom, realSizeInPx } = storeToRefs(store)
 
-// Авто-фит: сбросить зум так, чтобы этикетка заняла весь экран.
-// LabelCanvas следит за templateKey и labelSizeMM — здесь просто
-// меняем labelSize, что триггернёт watch в канвасе.
-// Дополнительная кнопка «по размеру» — вспомогательная.
+// Подогнать масштаб этикетки под рабочую область.
+// Сигнал отправляется в store, LabelCanvas подписан на него и вызывает fitZoom.
 function resetFit() {
-  // Вызываем подгонку через небольшой трюк: временно меняем zoom
-  // на заведомо неправильный, канвас пересчитает.
-  // На самом деле fitZoom() живёт в LabelCanvas и следит за labelSizeMM.
-  // Здесь просто говорим: «размер изменился» через tiny toggle.
-  const w = labelSize.value.width
-  labelSize.value.width = w + 0.001
-  requestAnimationFrame(() => {
-    labelSize.value.width = w
-  })
+  store.triggerFitZoom()
 }
 </script>
 

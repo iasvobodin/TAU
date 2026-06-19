@@ -338,7 +338,7 @@ onMounted(async () => {
         <template v-if="failedComponents">
           <DefectTable :failed-components="failedComponents" />
         </template>
-        <!-- <v-expansion-panels>
+        <v-expansion-panels>
           <v-expansion-panel
             :color="defectWorkflowByActionType[group[0]?.actionType]?.color || '#000000'"
             v-for="(group, sn) in groupedBySN"
@@ -378,7 +378,7 @@ onMounted(async () => {
               </v-row>
             </v-expansion-panel-text>
           </v-expansion-panel>
-        </v-expansion-panels> -->
+        </v-expansion-panels>
       </v-col>
     </v-row>
   </v-container>

@@ -7,6 +7,7 @@ import { useSerialNumberStore } from '../../stores/serialNumberStore'
 import { createDefectHistory } from '@/api/defectHistoryServices'
 import { createComponents } from '@/api/componentServices'
 import { openFileFromNet } from '@/assets/utils/openFileFromNet'
+import { appConfig } from '@/assets/utils/AppConfig'
 
 const props = defineProps<{ payload: Record<string, any> }>()
 
@@ -19,7 +20,7 @@ watch(
   { immediate: true }
 )
 
-const OK_PATH = import.meta.env.VITE_OK_PATH as string
+const OK_PATH = appConfig.paths.okPdf
 const supplier = ref('')
 const invoice = ref('')
 const dataFromAddArticle: SerialNumberData[] = []

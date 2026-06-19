@@ -2,6 +2,8 @@
 import { onBeforeUnmount, onMounted, onUnmounted, ref, watch, computed } from 'vue'
 import { storage } from '@neutralinojs/lib'
 import { readFileAndCreatePreview } from '@/assets/imageManager'
+import { useCounterStore } from '@/stores/counter'
+const counterStore = useCounterStore()
 
 // Тип для поля шаблона
 interface ChecklistField {
@@ -140,6 +142,16 @@ watch(
   { deep: true }
 )
 
+// Отметить все пункты как Pass
+const markAllPass = () => {
+  template.value.fields.forEach((field) => {
+    const fieldId = field.id || field.name
+    if (values.value[fieldId]) {
+      values.value[fieldId].status = 'pass'
+    }
+  })
+}
+
 // Навигация по карточкам
 const nextCard = () => {
   if (currentCardIndex.value < template.value.fields.length - 1) {
@@ -242,6 +254,16 @@ onBeforeUnmount(() => {
     <v-row class="ma-0">
       <v-col>
         <h3>ЧЕК ЛИСТ</h3>
+      </v-col>
+      <v-col cols="auto" v-if="counterStore.functionalTestDev">
+        <v-tooltip text="Отметить все пункты как Pass" location="bottom">
+          <template v-slot:activator="{ props: activatorProps }">
+            <v-btn color="success" @click="markAllPass" v-bind="activatorProps" size="small">
+              <v-icon left>mdi-check-all</v-icon>
+              Все Pass
+            </v-btn>
+          </template>
+        </v-tooltip>
       </v-col>
       <v-col cols="4" class="text-right">
         <v-tabs v-model="viewMode" density="compact" fixed-tabs>

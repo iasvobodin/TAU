@@ -51,6 +51,10 @@ export class FontManager {
   // fullName.toLowerCase() → FontEntry — для быстрого поиска пути при loadFont
   private nameIndex = new Map<string, FontEntry>()
 
+  // Имена файлов (lowercase), обнаруженные при последнем scan().
+  // Используется getSupportedFonts(true) для фильтрации только реально существующих на диске шрифтов.
+  private scannedFileNames = new Set<string>()
+
   // Значения переменных окружения, загруженные один раз в init().
   // Ключ — имя переменной ('LOCALAPPDATA', 'HOME', …), значение — путь с / как разделителем.
   private envVars = new Map<string, string>()
@@ -100,6 +104,9 @@ export class FontManager {
       await this._recursiveScan(dir, discovered)
     }
 
+    // Запоминаем имена файлов, найденных на этом компьютере, для фильтрации в getSupportedFonts(true)
+    this.scannedFileNames = new Set(discovered.map((f) => f.name.toLowerCase()))
+
     // Файлы, которых ещё нет в базе
     const existingNames = new Set(this.database.map((e) => e.fileName.toLowerCase()))
     const newFiles = discovered.filter((f) => !existingNames.has(f.name.toLowerCase()))
@@ -145,11 +152,17 @@ export class FontManager {
     await filesystem.writeFile(this.DB_PATH, JSON.stringify(tokenized, null, 2))
   }
 
-  /** Все поддерживаемые шрифты, отсортированные по имени. */
-  getSupportedFonts(): FontEntry[] {
-    return this.database
-      .filter((e) => e.supported)
-      .sort((a, b) => a.fullName.localeCompare(b.fullName))
+  /**
+   * Все поддерживаемые шрифты, отсортированные по имени.
+   * @param onlyScanned — если true, возвращает только шрифты, файлы которых были найдены
+   *                      при последнем scan() (т.е. реально существующие на этом компьютере).
+   */
+  getSupportedFonts(onlyScanned?: boolean): FontEntry[] {
+    let result = this.database.filter((e) => e.supported)
+    if (onlyScanned && this.scannedFileNames.size > 0) {
+      result = result.filter((e) => this.scannedFileNames.has(e.fileName.toLowerCase()))
+    }
+    return result.sort((a, b) => a.fullName.localeCompare(b.fullName))
   }
 
   /** Полный путь к файлу шрифта по его fullName. null если не найден. */
