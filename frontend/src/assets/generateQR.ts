@@ -4,7 +4,8 @@ import tau from './././../../public/ТАУ.svg'
 import { getCurrentMonthYear } from './utils/getCurrentMonthYear'
 
 export const generateQr = async (item: SerialNumberData): Promise<string> => {
-  const baseUrl = 'https://yandex-o-auth.vercel.app/'
+  // const baseUrl = 'https://yandex-o-auth.vercel.app/'
+  const baseUrl = 'https://d5d0jbobvpnectuin15p.wnq2w1o5.apigw.yandexcloud.net/'
   const url = `${baseUrl}?folder=${encodeURIComponent(getCurrentMonthYear())}&subfolder=${encodeURIComponent(item.name)}`
   console.log(url, 'url')
 

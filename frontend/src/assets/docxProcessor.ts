@@ -194,14 +194,38 @@ import type { DirectoryEntry } from '@neutralinojs/lib'
 import { mountServer } from '@/assets/utils/mountServer'
 import { findFileInDirectory } from '@/assets/utils/findFileInDirectory'
 import { getCurrentMonthYear } from './utils/getCurrentMonthYear'
-import { appConfig } from '@/assets/utils/AppConfig'
-// Конфигурация — пути берутся из config.json (с fallback на хардкод)
-const CONFIG = {
-  scriptName: 'convert.ps1',
-  convertPath: appConfig.paths.convertFolder,
-  resourcesPath: appConfig.paths.resourcesPath,
-  passportDir: appConfig.paths.passports,
-  searchKey: 'плата 2'
+import { usePathsStore } from '@/stores/paths'
+
+// FALLBACK — на случай если pathsStore ещё не загружен
+const FALLBACK_PATHS = {
+  convertFolder: './convertFolder',
+  resourcesPath: '/frontend/dist/',
+  passports: '//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Паспорта'
+}
+
+/**
+ * Получить конфигурацию из pathsStore.
+ * Используется в функциях (не module-level), чтобы пути были уже загружены.
+ */
+function getC() {
+  try {
+    const store = usePathsStore()
+    return {
+      scriptName: 'convert.ps1',
+      convertPath: store.effectiveConvertFolder,
+      resourcesPath: store.paths.resourcesPath,
+      passportDir: store.paths.passports,
+      searchKey: 'плата 2'
+    }
+  } catch {
+    return {
+      scriptName: 'convert.ps1',
+      convertPath: FALLBACK_PATHS.convertFolder,
+      resourcesPath: FALLBACK_PATHS.resourcesPath,
+      passportDir: FALLBACK_PATHS.passports,
+      searchKey: 'плата 2'
+    }
+  }
 }
 
 function normalizePath(path: string): string {
@@ -252,7 +276,8 @@ async function patchDocx(fileData: ArrayBuffer, serialNumber: string): Promise<A
 }
 
 async function checkIfPdfExists(partNumber: string, serialNumber: string): Promise<boolean> {
-  const outputPath = `${CONFIG.convertPath}/${partNumber}__${serialNumber}.pdf`
+  const cfg = getC()
+  const outputPath = `${cfg.convertPath}/${partNumber}__${serialNumber}.pdf`
   try {
     await filesystem.getStats(outputPath)
     //перенесём монтирование сервера в роут нового окна
@@ -293,8 +318,9 @@ async function ensureScriptExists(scriptPath: string): Promise<void> {
     await filesystem.getStats(scriptPath)
     console.log('Скрипт существует')
   } catch {
+    const cfg = getC()
     console.log('// Файла нет — копируем')
-    const vbsContent = await resources.readFile(`${CONFIG.resourcesPath}${CONFIG.scriptName}`)
+    const vbsContent = await resources.readFile(`${cfg.resourcesPath}${cfg.scriptName}`)
     await filesystem.writeFile(scriptPath, vbsContent)
     console.log('Скрипт сохранён во временную папку:', scriptPath)
   }
@@ -305,10 +331,11 @@ async function savePatchedFile(
   serialNumber: string,
   data: ArrayBuffer
 ): Promise<void> {
+  const cfg = getC()
   try {
-    await ensureDirectoryExists(CONFIG.convertPath)
-    await ensureScriptExists(`${CONFIG.convertPath}/${CONFIG.scriptName}`)
-    const outputPath = `${CONFIG.convertPath}/${partNumber}__${serialNumber}.docx`
+    await ensureDirectoryExists(cfg.convertPath)
+    await ensureScriptExists(`${cfg.convertPath}/${cfg.scriptName}`)
+    const outputPath = `${cfg.convertPath}/${partNumber}__${serialNumber}.docx`
     await filesystem.writeBinaryFile(outputPath, data)
     console.log(`Файл успешно сохранен: ${outputPath}`)
   } catch (error) {
@@ -318,9 +345,10 @@ async function savePatchedFile(
 }
 
 async function tryToConvert(partNumber: string, serialNumber: string): Promise<void> {
+  const cfg = getC()
   try {
-    const sharedPath = await filesystem.getAbsolutePath(CONFIG.convertPath)
-    const scriptPath = `${sharedPath}\\${CONFIG.scriptName}`
+    const sharedPath = await filesystem.getAbsolutePath(cfg.convertPath)
+    const scriptPath = `${sharedPath}\\${cfg.scriptName}`
     const result = await os.spawnProcess(`powershell -ExecutionPolicy Bypass -File "${scriptPath}"`)
 
     return new Promise<void>((resolve, reject) => {
@@ -335,7 +363,7 @@ async function tryToConvert(partNumber: string, serialNumber: string): Promise<v
               break
             case 'exit':
               events.off('spawnedProcess', handler)
-              const outputPath = `${CONFIG.convertPath}/${partNumber}__${serialNumber}.docx`
+              const outputPath = `${cfg.convertPath}/${partNumber}__${serialNumber}.docx`
               filesystem.remove(outputPath).catch(console.error)
               resolve()
               break
@@ -412,9 +440,10 @@ export async function printPassport(
   serial: string | string[]
 ): Promise<boolean> {
   const serialNumbers = normalizeSerials(serial)
+  const cfg = getC()
 
   try {
-    const passport = await findFileInDirectory(partNumber, CONFIG.passportDir)
+    const passport = await findFileInDirectory(partNumber, cfg.passportDir)
 
     if (!passport) {
       console.warn(`Паспорт для "${partNumber}" не найден`)

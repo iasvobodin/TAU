@@ -5,6 +5,7 @@ import type {
   ComponentAllPayload,
   DefectHistoryWithTypedAction
 } from '@/assets/interfaces'
+import { defectWorkflowMap } from '@/assets/interfaces'
 import DefectDetailModal from './DefectDetailModal.vue'
 const props = defineProps<{
   failedComponents: DefectHistoryWithTypedAction[] | null
@@ -14,7 +15,6 @@ const menuFrom = ref(false)
 const menuTo = ref(false)
 const dateFrom = ref<string | null>(null)
 const dateTo = ref<string | null>(null)
-const onlyDetectDefect = ref(true)
 const minDate = ref<string | null>(null)
 
 // Модальное окно
@@ -47,14 +47,52 @@ onMounted(() => {
   }
 })
 
-const preparedItems = computed(() => {
-  let source = props.failedComponents ?? []
+// Порядок этапов из defectWorkflowMap — для определения «последнего» действия
+const orderedActionTypes = Object.values(defectWorkflowMap).map((v) => v.actionType)
 
-  if (onlyDetectDefect.value) {
-    source = source.filter((item) => item.actionType === 'DetectDefect')
+// actionType -> название этапа (для колонки «Тип действия»)
+const actionTypeToStageName = computed(() => {
+  const map = {} as Record<ActionType, string>
+  for (const stageName in defectWorkflowMap) {
+    const stage = defectWorkflowMap[stageName as keyof typeof defectWorkflowMap]
+    map[stage.actionType] = stageName
   }
+  return map
+})
 
-  return source
+// Порядковый номер этапа: чем дальше по workflow, тем «новее» действие
+function stageOrder(item: DefectHistoryWithTypedAction): number {
+  const idx = orderedActionTypes.indexOf(item.actionType)
+  return idx === -1 ? -1 : idx
+}
+
+// Цвет чипа этапа (из defectWorkflowMap), для неизвестных типов — серый
+function getStageColor(actionType: string): string {
+  const stageName = actionTypeToStageName.value[actionType as ActionType]
+  return stageName ? defectWorkflowMap[stageName as keyof typeof defectWorkflowMap].color : 'grey'
+}
+
+// Сравнение двух записей: сначала по этапу, при равенстве — по времени
+function compareStage(a: DefectHistoryWithTypedAction, b: DefectHistoryWithTypedAction): number {
+  const orderDiff = stageOrder(a) - stageOrder(b)
+  if (orderDiff !== 0) return orderDiff
+  return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+}
+
+// Оставляем по одной строке на брак (SN) с последним (наиболее продвинутым) типом действия
+function getLatestPerSN(items: DefectHistoryWithTypedAction[]): DefectHistoryWithTypedAction[] {
+  const bySN = new Map<string, DefectHistoryWithTypedAction>()
+  for (const item of items) {
+    const existing = bySN.get(item.componentSN)
+    if (!existing || compareStage(item, existing) > 0) {
+      bySN.set(item.componentSN, item)
+    }
+  }
+  return Array.from(bySN.values())
+}
+
+const preparedItems = computed(() => {
+  return getLatestPerSN(props.failedComponents ?? [])
     .map((item) => ({
       ...item,
       timestamp: new Date(item.timestamp)
@@ -181,16 +219,6 @@ function openDefectDetails(item: DefectHistoryWithTypedAction) {
           />
         </v-menu>
       </v-col>
-
-      <!-- Чекбокс только DetectDefect -->
-      <v-col cols="12" md="3" class="d-flex align-center">
-        <v-checkbox
-          v-model="onlyDetectDefect"
-          label="Только DetectDefect"
-          density="compact"
-          hide-details
-        />
-      </v-col>
     </v-row>
     <!-- ТАБЛИЦА -->
     <v-data-table
@@ -224,7 +252,9 @@ function openDefectDetails(item: DefectHistoryWithTypedAction) {
       </template>
 
       <template #item.actionType="{ item }">
-        {{ item.actionType }}
+        <v-chip size="small" variant="tonal" :color="getStageColor(item.actionType)">
+          {{ actionTypeToStageName[item.actionType] || item.actionType }}
+        </v-chip>
       </template>
 
       <!-- Кнопка действия -->

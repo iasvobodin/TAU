@@ -24,6 +24,8 @@ const internalDialog = computed({
 
 // Локальное состояние
 const currentTab = ref('info') // info, workflow, history, attachments
+// Ключ для перезагрузки истории при каждом открытии вкладки «История»
+const historyReloadKey = ref(0)
 const defectClassification = ref<{
   type: 'fixable' | 'non-fixable' | null
   source: 'production' | 'supplier' | null
@@ -115,6 +117,13 @@ watch(
   }
   // { immediate: true }
 )
+
+// При переключении на вкладку «История» запрашиваем свежие данные
+watch(currentTab, (tab) => {
+  if (tab === 'history') {
+    historyReloadKey.value++
+  }
+})
 async function updateInfo(id: number) {}
 async function loadDefectDetails(defectId: number) {
   const response = await fetchDefectHistory(defectId)
@@ -379,7 +388,7 @@ async function handleRejectDefect(comment: string) {
 
           <!-- Вкладка: История -->
           <v-window-item value="history">
-            <DefectHistory :defect-id="defect.id" />
+            <DefectHistory :component-sn="defect.componentSN" :reload-key="historyReloadKey" />
           </v-window-item>
 
           <!-- Вкладка: Вложения -->

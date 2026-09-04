@@ -10,7 +10,8 @@ import * as directives from 'vuetify/directives'
 import { init, events, app } from '@neutralinojs/lib'
 import { useWebSocketStore } from './stores/websockets'
 import { useUserStore } from './stores/user'
-import { appConfig } from '@/assets/utils/AppConfig'
+import { usePathsStore } from './stores/paths'
+import { checkAllNetworkPaths, logPathCheckResults } from '@/assets/utils/checkPaths'
 
 const vuetify = createVuetify({
   defaults: {
@@ -23,20 +24,45 @@ const vuetify = createVuetify({
   directives
 })
 
-createApp(App).use(router).use(createPinia()).use(vuetify).mount('#app')
+const pinia = createPinia()
 
-const wsStore = useWebSocketStore()
-const userStore = useUserStore()
-console.log('we are here')
+/**
+ * Последовательная инициализация приложения:
+ * 1. Загружаем конфиг путей (синхронно до монтирования, чтобы не было race condition)
+ * 2. Монтируем Vue-приложение
+ * 3. Инициализируем авторизацию
+ * 4. Подключаем WebSocket
+ */
+async function bootstrap() {
+  // 1. Загружаем конфиг путей ДО монтирования Vue
+  const pathsStore = usePathsStore(pinia)
+  await pathsStore.loadPaths()
+  console.log('[bootstrap] paths загружены:', pathsStore.paths)
 
-// Загружаем центральный конфиг путей перед инициализацией
-appConfig.load().then(() => {
-  userStore.initAuth().then(() => {
-    if (userStore.isAuthorized) {
-      wsStore.connect()
-    }
-  })
-})
+  // 1.1. Проверяем доступность всех сетевых путей из конфига
+  const pathResults = await checkAllNetworkPaths(pathsStore.paths)
+  logPathCheckResults(pathResults)
+
+  // 2. Монтируем приложение
+  const app = createApp(App)
+  app.use(router)
+  app.use(pinia)
+  app.use(vuetify)
+  app.mount('#app')
+
+  console.log('we are here')
+
+  // 3. Инициализация авторизации
+  const userStore = useUserStore()
+  await userStore.initAuth()
+
+  if (userStore.isAuthorized) {
+    const wsStore = useWebSocketStore()
+    wsStore.connect()
+  }
+}
+
+bootstrap()
 
 init()
 events.on('windowClose', () => {

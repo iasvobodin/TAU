@@ -22,12 +22,12 @@ const props = defineProps<{
 import { createDefectHistory } from '@/api/defectHistoryServices'
 import { updateProduct } from '@/api/productServices'
 import { openFileFromNet } from '@/assets/utils/openFileFromNet'
+import { usePathsStore } from '@/stores/paths'
 
-import { appConfig } from '@/assets/utils/AppConfig'
-
-const OK_PATH = appConfig.paths.okPdf
-const KD_PATH = appConfig.paths.kd
-const OTHER_PATH = appConfig.paths.other
+const pathsStore = usePathsStore()
+const OK_PATH = pathsStore.paths.okPdf
+const KD_PATH = pathsStore.paths.kd
+const OTHER_PATH = pathsStore.paths.other
 const emit = defineEmits<{
   (e: 'done'): void
 }>()

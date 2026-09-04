@@ -3,7 +3,7 @@ import { storeToRefs } from 'pinia'
 import { useLabelEditorStore } from '@/stores/labelEditor'
 
 const store = useLabelEditorStore()
-const { labelSize, zoom, realSizeInPx } = storeToRefs(store)
+const { labelSize, zoom, realSizeInPx, labelBorder } = storeToRefs(store)
 
 // Подогнать масштаб этикетки под рабочую область.
 // Сигнал отправляется в store, LabelCanvas подписан на него и вызывает fitZoom.
@@ -99,6 +99,47 @@ function resetFit() {
           </button>
         </template>
       </v-tooltip>
+    </div>
+
+    <!-- ── Рамка этикетки ─────────────────────────────────────────────────── -->
+    <div class="sp-section-header" style="margin-top: 4px">
+      <v-icon size="11" color="#7a8a9a">mdi-border-all</v-icon>
+      <span>Рамка этикетки</span>
+    </div>
+
+    <div class="sp-row" style="gap: 6px">
+      <v-checkbox
+        v-model="labelBorder.enabled"
+        hide-details
+        density="compact"
+        class="sp-checkbox"
+        label="Включить"
+      />
+      <template v-if="labelBorder.enabled">
+        <div class="sp-field">
+          <span class="sp-label">Толщина</span>
+          <div class="sp-spinbox" style="width: 62px">
+            <input
+              v-model.number="labelBorder.width"
+              type="number"
+              step="0.1"
+              min="0.1"
+              max="10"
+              class="sp-spinbox-input"
+              title="Толщина рамки (мм)"
+            />
+          </div>
+        </div>
+        <div class="sp-field">
+          <span class="sp-label">Цвет</span>
+          <input
+            v-model="labelBorder.color"
+            type="color"
+            class="sp-color-picker"
+            title="Цвет рамки"
+          />
+        </div>
+      </template>
     </div>
   </div>
 </template>
@@ -271,5 +312,35 @@ function resetFit() {
   background: #e8f0fb;
   border-color: #90b8e8;
   color: #1565c0;
+}
+
+/* ── Checkbox для рамки ────────────────────────────────────────────────────── */
+.sp-checkbox {
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+}
+.sp-checkbox :deep(.v-label) {
+  font-size: 11px;
+  color: #555;
+}
+
+/* ── Color picker для рамки ────────────────────────────────────────────────── */
+.sp-color-picker {
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #c4c8ce;
+  border-radius: 3px;
+  cursor: pointer;
+  background: none;
+  flex-shrink: 0;
+}
+.sp-color-picker::-webkit-color-swatch-wrapper {
+  padding: 2px;
+}
+.sp-color-picker::-webkit-color-swatch {
+  border: none;
+  border-radius: 2px;
 }
 </style>

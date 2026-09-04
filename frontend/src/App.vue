@@ -7,12 +7,41 @@ import { useWebSocketStore } from './stores/websockets'
 import ErrorComponent from '@/components/ErrorComponent.vue'
 import { useCounterStore } from './stores/counter'
 import { mountServer } from './assets/utils/mountServer'
+import { appConfig } from '@/assets/utils/AppConfig'
+import { UpdateChecker } from '@/assets/utils/updateChecker'
+import type { ManifestData, ManifestVersion } from '@/assets/utils/updateChecker'
+import UpdateDialog from '@/components/UpdateDialog.vue'
 
 const counterStore = useCounterStore()
 const userStore = useUserStore()
 const wsStore = useWebSocketStore()
 
 const showUserDialog = ref(false)
+
+// ─── Update Checker ────────────────────────────────────────────────────────
+const showUpdateDialog = ref(false)
+const updateManifest = ref<ManifestData | null>(null)
+const updateLatestVersion = ref<ManifestVersion | null>(null)
+let updateChecker: UpdateChecker | null = null
+
+function onUpdateAvailable(manifest: ManifestData, latest: ManifestVersion) {
+  updateManifest.value = manifest
+  updateLatestVersion.value = latest
+  showUpdateDialog.value = true
+}
+
+async function onUpdateNow() {
+  showUpdateDialog.value = false
+  if (updateChecker) {
+    await updateChecker.requestRestart()
+  }
+}
+
+function onUpdateLater() {
+  showUpdateDialog.value = false
+  // Откладываем — будет предложено снова через 5 минут (интервал в UpdateChecker)
+}
+// ──────────────────────────────────────────────────────────────────────────
 
 watch(
   () => userStore.isLoadingUser,
@@ -82,10 +111,25 @@ function handleKeydown(event: KeyboardEvent) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   window.addEventListener('keydown', handleKeydown)
   wsStore.initNeutralinoEvents()
   mountServer('./.tmp')
+
+  // Инициализация конфига (загружает config.json)
+  await appConfig.load()
+
+  // Инициализация UpdateChecker
+  const updatesPath = appConfig.updatesPath
+  const currentVersion = appConfig.version
+  if (updatesPath) {
+    console.log(`[App] Запуск UpdateChecker: updatesPath=${updatesPath}, version=${currentVersion}`)
+    updateChecker = new UpdateChecker(updatesPath, currentVersion)
+    updateChecker.onUpdate(onUpdateAvailable)
+    await updateChecker.start()
+  } else {
+    console.log('[App] updatesPath не указан — пропускаю проверку обновлений')
+  }
 
   window.addEventListener('online', () => {
     console.log('Доступ в Интернет есть.')
@@ -106,6 +150,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
+  // Останавливаем UpdateChecker
+  updateChecker?.stop()
 })
 </script>
 
@@ -113,6 +159,15 @@ onUnmounted(() => {
   <ErrorComponent />
 
   <RouterView />
+
+  <!-- Update dialog -->
+  <UpdateDialog
+    v-model:visible="showUpdateDialog"
+    :manifest="updateManifest"
+    :latest-version="updateLatestVersion"
+    @update-now="onUpdateNow"
+    @later="onUpdateLater"
+  />
 
   <v-dialog v-model="userStore.isSystemAuthOpen" max-width="500px" persistent>
     <v-card

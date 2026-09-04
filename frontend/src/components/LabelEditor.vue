@@ -17,12 +17,16 @@ import {
   events
 } from '@neutralinojs/lib'
 const store = useLabelEditorStore()
-const { lastSavedPath } = storeToRefs(store)
+const { lastSavedPath, lastSavedLabelPath } = storeToRefs(store)
 
 const menuOpen = ref(false)
+const labelMenuOpen = ref(false)
 
 const currentFileName = computed(() =>
   lastSavedPath.value ? (lastSavedPath.value.split(/[\\\/]/).pop() ?? null) : null
+)
+const currentLabelFileName = computed(() =>
+  lastSavedLabelPath.value ? (lastSavedLabelPath.value.split(/[\\\/]/).pop() ?? null) : null
 )
 
 function doAction(fn: () => void) {
@@ -30,10 +34,16 @@ function doAction(fn: () => void) {
   fn()
 }
 
+function doLabelAction(fn: () => void) {
+  labelMenuOpen.value = false
+  fn()
+}
+
 // Закрыть меню при клике вне него
 function onOutsideClick(e: MouseEvent) {
   const target = e.target as HTMLElement
   if (!target.closest('.tmpl-menu-wrap')) menuOpen.value = false
+  if (!target.closest('.label-menu-wrap')) labelMenuOpen.value = false
 }
 
 onMounted(() => {
@@ -101,6 +111,58 @@ onUnmounted(() => document.removeEventListener('mousedown', onOutsideClick))
             <button class="tmpl-item tmpl-item--danger" @click="doAction(store.clearTemplate)">
               <v-icon size="14" class="tmpl-item__icon">mdi-file-remove-outline</v-icon>
               <span class="tmpl-item__label">Очистить шаблон</span>
+            </button>
+          </div>
+        </transition>
+      </div>
+
+      <!-- ── Меню "Этикетка" ────────────────────────────────────────────────── -->
+      <div class="tmpl-menu-wrap label-menu-wrap">
+        <button
+          :class="['tmpl-menu-trigger', { 'tmpl-menu-trigger--open': labelMenuOpen }]"
+          @click="labelMenuOpen = !labelMenuOpen"
+        >
+          <v-icon size="14">mdi-label-outline</v-icon>
+          <span>Этикетка</span>
+          <v-icon size="12" class="tmpl-menu-arrow">mdi-chevron-down</v-icon>
+        </button>
+
+        <!-- Dropdown -->
+        <transition name="tmpl-drop">
+          <div v-if="labelMenuOpen" class="tmpl-dropdown">
+            <!-- Текущий файл -->
+            <div class="tmpl-current-file">
+              <v-icon size="12" :color="currentLabelFileName ? '#4caf50' : '#888'">
+                {{ currentLabelFileName ? 'mdi-file-check-outline' : 'mdi-file-outline' }}
+              </v-icon>
+              <span class="tmpl-current-name">{{ currentLabelFileName ?? 'Не сохранён' }}</span>
+            </div>
+
+            <div class="tmpl-sep" />
+
+            <button class="tmpl-item" @click="doLabelAction(store.openLabel)">
+              <v-icon size="14" class="tmpl-item__icon">mdi-folder-open-outline</v-icon>
+              <span class="tmpl-item__label">Открыть…</span>
+            </button>
+
+            <div class="tmpl-sep" />
+
+            <button class="tmpl-item" @click="doLabelAction(store.saveLabel)">
+              <v-icon size="14" class="tmpl-item__icon">mdi-content-save-outline</v-icon>
+              <span class="tmpl-item__label">Сохранить</span>
+              <span class="tmpl-item__hint">Ctrl+Shift+L</span>
+            </button>
+
+            <button class="tmpl-item" @click="doLabelAction(store.saveLabelAs)">
+              <v-icon size="14" class="tmpl-item__icon">mdi-content-save-edit-outline</v-icon>
+              <span class="tmpl-item__label">Сохранить как…</span>
+            </button>
+
+            <div class="tmpl-sep" />
+
+            <button class="tmpl-item tmpl-item--danger" @click="doLabelAction(store.clearLabel)">
+              <v-icon size="14" class="tmpl-item__icon">mdi-file-remove-outline</v-icon>
+              <span class="tmpl-item__label">Очистить этикетку</span>
             </button>
           </div>
         </transition>

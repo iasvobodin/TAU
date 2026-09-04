@@ -18,7 +18,7 @@ export const fetchDefectHistory = async (id: number): Promise<ApiResponse<Defect
 export const fetchDefectHistoryBySN = async (
   componentSN: string
 ): Promise<ApiResponse<DefectHistoryWithTypedAction[]>> => {
-  return get<DefectHistoryWithTypedAction[]>(`${API_URL}/defect-history/${componentSN}`)
+  return get<DefectHistoryWithTypedAction[]>(`${API_URL}/defect-history-component/${componentSN}`)
 }
 
 export const fetchDefectHistoryAll = async (): Promise<

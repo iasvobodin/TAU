@@ -1,4 +1,5 @@
 import { useErrorStore } from '@/stores/errorStore'
+import { safeJsonParse } from '@/assets/safeJson'
 
 // Укажи свой API-ключ здесь
 const API_KEY = 'your-secret-api-key-12345'
@@ -9,14 +10,20 @@ export interface ApiResponse<T> {
 }
 
 const handleResponse = async <T>(response: Response): Promise<T> => {
+  const text = await response.text()
   if (!response.ok) {
-    const erJSon = await response.json()
+    let erJSon: unknown
+    try {
+      erJSon = safeJsonParse(text)
+    } catch {
+      erJSon = text
+    }
     // const errorText = await response.text();
     console.log(erJSon)
 
     throw new Error(`Error! status: ${response.status}, message: ${JSON.stringify(erJSon)}`)
   }
-  return response.json()
+  return safeJsonParse(text)
 }
 
 export const fetchData = async <T>(

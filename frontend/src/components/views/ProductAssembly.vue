@@ -29,7 +29,8 @@ import { openSecondWindow } from '@/assets/utils/openSecondWindow'
 import { useCounterStore } from '@/stores/counter'
 import { useWebSocketStore } from '@/stores/websockets'
 import { LabelPrinterMulty } from '@/assets/printLabelMulty'
-import { appConfig } from '@/assets/utils/AppConfig'
+import { usePathsStore } from '@/stores/paths'
+const pathsStore = usePathsStore()
 
 const props = defineProps<{
   information: ProductType['information']
@@ -54,9 +55,9 @@ const comment = ref('')
 const assemblyPassedDialog = ref(false)
 const checkLable = ref(false)
 const checkPasport = ref(false)
-const OK_PATH = appConfig.paths.okPdf
-const KD_PATH = appConfig.paths.kd
-const OTHER_PATH = appConfig.paths.other
+const OK_PATH = pathsStore.paths.okPdf
+const KD_PATH = pathsStore.paths.kd
+const OTHER_PATH = pathsStore.paths.other
 
 const findPartNumberInSpecification = (item: string) => {
   return props.product.productPartNumbers.find((e) => e === item)
@@ -265,13 +266,13 @@ const serialNumberInput = ref<InstanceType<typeof import('vuetify/components').V
 
 const readFile = async () => {
   const OK = props.product.template.RE
-  const pdfData = await filesystem.readBinaryFile(`${appConfig.paths.ok}/${OK}.pdf`)
+  const pdfData = await filesystem.readBinaryFile(`${pathsStore.paths.ok}/${OK}.pdf`)
   console.log(pdfData)
 }
 
 const openPdfInHtml = async () => {
   const OK = props.product.template.RE
-  const pdfPath = `${appConfig.paths.ok}/${OK}.pdf`
+  const pdfPath = `${pathsStore.paths.ok}/${OK}.pdf`
 
   let pdfData
   try {
@@ -363,14 +364,14 @@ const openPdfInHtml = async () => {
 const openFile = async () => {
   await openPdfInHtml()
   const OK = props.product.template.RE
-  const okDir = appConfig.paths.ok.replace(/\//g, '\\')
+  const okDir = pathsStore.paths.ok.replace(/\//g, '\\')
   os.execCommand(`explorer "${okDir}\\${OK}.pdf"`)
 }
 
 const openFileKD = async () => {
   // await openPdfInHtml()
   const KD = props.product.checkList?.doc_ConstructKD
-  const kdDir = appConfig.paths.kd.replace(/\//g, '\\')
+  const kdDir = pathsStore.paths.kd.replace(/\//g, '\\')
   os.execCommand(`explorer "${kdDir}\\${KD}.pdf"`)
 }
 
@@ -440,7 +441,7 @@ const openFileOK2 = async () => {
     return
   }
 
-  const baseDir = appConfig.paths.okPdf
+  const baseDir = pathsStore.paths.okPdf
 
   try {
     const fileEntry = await findFileInDirectory(fileName, baseDir)
@@ -511,7 +512,7 @@ const printPasport = async (partNumber: string) => {
   }
 
   try {
-    const dirTAU = await filesystem.readDirectory(appConfig.paths.passports)
+    const dirTAU = await filesystem.readDirectory(pathsStore.paths.passports)
 
     const filteredFile = dirTAU.find(
       (item) => item.type === 'FILE' && item.entry.includes(partNumber)
@@ -740,7 +741,8 @@ const openPrintPassportWindow = async (): Promise<void> => {
   }
   const pdfName = `${partNumber}__${serialNumber}.pdf`
   try {
-    await openSecondWindow('./convertFolder', pdfName, '/convertFolder')
+    const convPath = pathsStore.effectiveConvertFolder
+    await openSecondWindow(convPath, pdfName, '/convertFolder')
 
     await printPassport(partNumber, serialNumber)
   } catch (error) {
@@ -779,7 +781,7 @@ const printPassportOnServer = async (): Promise<void> => {
   }
 
   // ── Ищем шаблон на сетевой папке (через Neutralino — у клиента есть доступ) ──
-  const passportDir = appConfig.paths.passports
+  const passportDir = pathsStore.paths.passports
   console.log(`[passport-server] Поиск шаблона в: ${passportDir}`)
   const foundTemplate = await findFileInDirectory(partNumber, passportDir)
 
@@ -826,7 +828,7 @@ const printPassportOnServer = async (): Promise<void> => {
       const pdfBlob = await pdfResponse.arrayBuffer()
 
       // Сохраняем локально (как и раньше через ps1)
-      const savePath = `${appConfig.paths.convertFolder}/${pdfName}`
+      const savePath = `${pathsStore.effectiveConvertFolder}/${pdfName}`
       await filesystem.writeBinaryFile(savePath, pdfBlob)
       console.log(`[passport-server] PDF сохранён локально: ${savePath}`)
     } catch (err) {
@@ -834,7 +836,8 @@ const printPassportOnServer = async (): Promise<void> => {
     }
 
     // Открываем через secondWindow (как и старая кнопка)
-    await openSecondWindow('./convertFolder', pdfName, '/convertFolder')
+    const convPath = pathsStore.effectiveConvertFolder
+    await openSecondWindow(convPath, pdfName, '/convertFolder')
   }
 }
 

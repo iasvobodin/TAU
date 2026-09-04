@@ -15,9 +15,12 @@
  */
 
 import { filesystem, window as neuWindow } from '@neutralinojs/lib'
-import { renderLabelsToHTMLPage } from '@/assets/htmlRenderer'
-import { renderLabelsToHTML as renderLabelsToSVGHTML } from '@/assets/renderToSVG'
-import type { PrintTemplateData, CommonData, BatchItem } from '@/types/label'
+import { renderLabelsToHTMLPage, renderLabelSheetsToHTMLPage } from '@/assets/htmlRenderer'
+import {
+  renderLabelsToHTML as renderLabelsToSVGHTML,
+  renderLabelSheetsToHTML
+} from '@/assets/renderToSVG'
+import type { PrintTemplateData, CommonData, BatchItem, PrintLayoutConfig } from '@/types/label'
 
 // ─── Конфигурация окна печати ─────────────────────────────────────────────────
 
@@ -97,5 +100,33 @@ export class LabelPrinterMulty {
   ): Promise<void> {
     const html = await renderLabelsToSVGHTML(items, common, templateData)
     await writeAndOpen(this.basePath, 'print-svg.html', html, this.windowConfig)
+  }
+
+  // ── Multi-label (листы с несколькими этикетками) ─────────────────────────
+
+  /**
+   * Печать листов с несколькими этикетками (HTML-рендерер).
+   */
+  async printSheets(
+    sheets: BatchItem[][],
+    common: CommonData,
+    templateData: PrintTemplateData,
+    layout: PrintLayoutConfig
+  ): Promise<void> {
+    const html = await renderLabelSheetsToHTMLPage(sheets, common, templateData, layout)
+    await writeAndOpen(this.basePath, 'print-multi-sheet.html', html, this.windowConfig)
+  }
+
+  /**
+   * Печать листов с несколькими этикетками (SVG-рендерер).
+   */
+  async printSheetsSVG(
+    sheets: BatchItem[][],
+    common: CommonData,
+    templateData: PrintTemplateData,
+    layout: PrintLayoutConfig
+  ): Promise<void> {
+    const html = await renderLabelSheetsToHTML(sheets, common, templateData, layout)
+    await writeAndOpen(this.basePath, 'print-multi-sheet-svg.html', html, this.windowConfig)
   }
 }

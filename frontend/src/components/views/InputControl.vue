@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { ref, watch, type Ref } from 'vue'
+import { ref, watch, onMounted, type Ref } from 'vue'
 import AddArticle from './AddArticle.vue'
 import type { SerialNumberData } from '@/assets/interfaces'
 import { useUserStore } from '@/stores/user'
 import { useSerialNumberStore } from '../../stores/serialNumberStore'
-import { createDefectHistory } from '@/api/defectHistoryServices'
+import { createDefectHistory, fetchDefectHistoryAll } from '@/api/defectHistoryServices'
 import { createComponents } from '@/api/componentServices'
 import { openFileFromNet } from '@/assets/utils/openFileFromNet'
-import { appConfig } from '@/assets/utils/AppConfig'
+import { usePathsStore } from '@/stores/paths'
+const pathsStore = usePathsStore()
 
 const props = defineProps<{ payload: Record<string, any> }>()
 
@@ -20,10 +21,13 @@ watch(
   { immediate: true }
 )
 
-const OK_PATH = appConfig.paths.okPdf
+const OK_PATH = pathsStore.paths.okPdf
 const supplier = ref('')
 const invoice = ref('')
 const dataFromAddArticle: SerialNumberData[] = []
+// Ключи уже созданных записей брака: `${componentSN}__DetectDefect__${описание в нижнем регистре}`.
+// Защита от дубликатов: при повторных нажатиях "Добавить" один и тот же брак не создаётся дважды.
+const createdDefectKeys = new Set<string>()
 const sendingStatus = ref('')
 
 const prepareDataToSend = (data: SerialNumberData[]) => {
@@ -44,6 +48,11 @@ const prepareDataToSend = (data: SerialNumberData[]) => {
 }
 
 const sendComponents = async () => {
+  // Обрабатываем только НОВЫЕ добавленные компоненты (текущую партию),
+  // чтобы повторные клики по "Добавить" не создавали брак заново для уже обработанных SN.
+  const batchToProcess = dataFromAddArticle.slice()
+  dataFromAddArticle.length = 0
+
   try {
     const result = await createComponents(prepareDataToSend(useSerialNumberStore().sNumbers))
     result.forEach((response, index) => {
@@ -63,30 +72,60 @@ const sendComponents = async () => {
     console.log(error)
   }
 
-  const promises = dataFromAddArticle.map(async (component) => {
+  const promises = batchToProcess.map(async (component) => {
     console.log('зашли в функцию')
     //отмеченные как брак!!!
-    if (component.status) {
-      console.log('внутри создания дх', component.name)
+    if (!component.status) return
 
-      try {
-        const dh = await createDefectHistory({
-          componentSN: component.name,
-          actionType: 'DetectDefect',
-          status: 'on_hold',
-          user: useUserStore().userFullName,
-          // comment: component.comment,
-          // partNumber: component.partNumber,
-          description: component.comment
-        })
-        console.log('создали дефект хистори', dh.data)
-      } catch (error) {
-        console.log(error)
-      }
+    // Не создаём брак повторно для того же SN + DetectDefect + того же описания
+    const key = `${component.name}__DetectDefect__${(component.comment ?? '').trim().toLowerCase()}`
+    if (createdDefectKeys.has(key)) {
+      console.log('пропускаем дубликат брака', component.name)
+      return
+    }
+    // Резервируем ключ ДО асинхронного вызова, чтобы параллельные задачи не продублировали запись
+    createdDefectKeys.add(key)
+
+    console.log('внутри создания дх', component.name)
+
+    try {
+      const dh = await createDefectHistory({
+        componentSN: component.name,
+        actionType: 'DetectDefect',
+        status: 'on_hold',
+        user: useUserStore().userFullName,
+        // comment: component.comment,
+        // partNumber: component.partNumber,
+        description: component.comment
+      })
+      console.log('создали дефект хистори', dh.data)
+    } catch (error) {
+      console.log(error)
     }
   })
   await Promise.all(promises)
 }
+
+// Заполняем множество уже существующими в БД записями брака (DetectDefect),
+// чтобы повторная фиксация того же брака (в т.ч. после перезагрузки страницы) не дублировалась.
+onMounted(async () => {
+  try {
+    const res = await fetchDefectHistoryAll()
+    res.data?.forEach((d) => {
+      if (d.actionType === 'DetectDefect') {
+        createdDefectKeys.add(
+          `${d.componentSN}__DetectDefect__${(d.description ?? '').trim().toLowerCase()}`
+        )
+      }
+    })
+    console.log(
+      'Загружено существующих записей брака для защиты от дубликатов:',
+      createdDefectKeys.size
+    )
+  } catch (error) {
+    console.log(error)
+  }
+})
 
 const AddArticleEmit = (e: SerialNumberData[]) => {
   //нужно работать со стором, добавляем оставшиеся параметры, пытаемся отправить, меняем флаги

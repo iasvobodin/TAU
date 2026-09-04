@@ -5,6 +5,9 @@ using System.Text;
 
 class Program
 {
+    // Версия auth.exe — увеличивать при изменении функционала
+    const string VERSION = "2.1.0";
+
     [DllImport("credui.dll", CharSet = CharSet.Unicode)]
     private static extern int CredUIPromptForWindowsCredentials(
         ref CREDUI_INFO pUiInfo, int dwAuthError, ref uint pulAuthPackage,
@@ -74,10 +77,25 @@ class Program
         using (Process p = Process.Start(psi)) { p.WaitForExit(3000); }
     }
 
-    static void Main()
+    static void Main(string[] args)
     {
-        Console.OutputEncoding = Encoding.UTF8;
-        Console.SetError(new System.IO.StreamWriter(Console.OpenStandardError(), Encoding.UTF8) { AutoFlush = true });
+        // Поддержка --version для проверки актуальности бинарника
+        if (args.Length > 0 && args[0] == "--version")
+        {
+            Console.Write(VERSION);
+            return;
+        }
+
+        // Принудительно устанавливаем Working Directory на SystemRoot,
+        // чтобы избежать ошибки "CMD.EXE не может работать с UNC" при запуске из сетевой папки
+        string systemRoot = Environment.GetEnvironmentVariable("SystemRoot") ?? @"C:\Windows";
+        if (!string.IsNullOrEmpty(systemRoot))
+            Environment.CurrentDirectory = systemRoot;
+
+        // Используем OEM-кодировку (CP866 для русской Windows) — её ожидает NeutralinoJS
+        Console.OutputEncoding = Encoding.GetEncoding(866);
+        Console.InputEncoding = Encoding.GetEncoding(866);
+        Console.SetError(new System.IO.StreamWriter(Console.OpenStandardError(), Encoding.GetEncoding(866)) { AutoFlush = true });
 
         CREDUI_INFO ui = new CREDUI_INFO();
         ui.cbSize = Marshal.SizeOf(ui);

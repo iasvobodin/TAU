@@ -8,14 +8,17 @@ const partNumber = ref('')
 const serialsText = ref('')
 const loading = ref(false)
 
-import { appConfig } from '@/assets/utils/AppConfig'
+import { usePathsStore } from '@/stores/paths'
 
-const CONFIG = {
-  scriptName: 'convert.ps1',
-  convertPath: './convertFolder',
-  resourcesPath: '/frontend/dist/',
-  passportDir: appConfig.paths.passports,
-  searchKey: 'плата 2'
+const pathsStore = usePathsStore()
+function getC() {
+  return {
+    scriptName: 'convert.ps1',
+    convertPath: pathsStore.effectiveConvertFolder,
+    resourcesPath: pathsStore.paths.resourcesPath,
+    passportDir: pathsStore.paths.passports,
+    searchKey: 'плата 2'
+  }
 }
 
 function parseSerials(text: string): string[] {
@@ -63,8 +66,9 @@ async function mergeAndReorderPdfs(inputFiles: string[], outputFile: string) {
 }
 
 async function cleanupDocx(partNumber: string, serials: string[]) {
+  const cfg = getC()
   for (const sn of serials) {
-    const path = `${CONFIG.convertPath}/${partNumber}__${sn}.docx`
+    const path = `${cfg.convertPath}/${partNumber}__${sn}.docx`
     try {
       await filesystem.getStats(path).then(() => filesystem.remove(path))
     } catch (e) {
@@ -90,16 +94,18 @@ async function handlePrint() {
     loading.value = true
 
     await printPassport(partNumber.value, serials)
+    const cfg = getC()
 
-    const pdfFiles = serials.map((sn) => `${CONFIG.convertPath}/${partNumber.value}__${sn}.pdf`)
+    const pdfFiles = serials.map((sn) => `${cfg.convertPath}/${partNumber.value}__${sn}.pdf`)
 
-    const output = `${CONFIG.convertPath}/${partNumber.value}__PRINT.pdf`
+    const output = `${cfg.convertPath}/${partNumber.value}__PRINT.pdf`
 
     await mergeAndReorderPdfs(pdfFiles, output)
 
     // 🧹 чистим docx
     await cleanupDocx(partNumber.value, serials)
-    await openSecondWindow('./convertFolder', `${partNumber.value}__PRINT.pdf`, '/convertFolder')
+    const convertPath = pathsStore.effectiveConvertFolder
+    await openSecondWindow(convertPath, `${partNumber.value}__PRINT.pdf`, '/convertFolder')
   } catch (e) {
     console.error(e)
     alert('Ошибка при печати')

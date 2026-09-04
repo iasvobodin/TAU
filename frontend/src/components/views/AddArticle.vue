@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, reactive, watch, nextTick, computed } from 'vue'
-import { appConfig } from '@/assets/utils/AppConfig'
+import { usePathsStore } from '@/stores/paths'
+const pathsStore = usePathsStore()
 import { usePartNumberComponents } from '../../stores/partNumberComponents'
 import { useSerialNumberStore } from '../../stores/serialNumberStore'
 import { useErrorStore } from '@/stores/errorStore'
@@ -10,7 +11,7 @@ import type { ModulesType, SerialNumberData } from '@/assets/interfaces'
 import { server, filesystem, os, events, window as neuWindow } from '@neutralinojs/lib'
 import { generateQr } from '@/assets/generateQR'
 import { getCurrentMonthYear } from '@/assets/utils/getCurrentMonthYear'
-import { createYandexDiskWatcher } from '@/assets/yandexWatcher'
+import { createYandexDiskWatcher, ensureYandexFolderExists } from '@/assets/yandexWatcher'
 
 const props = defineProps({
   invoice: {
@@ -203,21 +204,37 @@ const isAddButtonDisabled = computed(() => {
   )
 })
 const openFile = async () => {
-  const okDir = appConfig.paths.ok.replace(/\//g, '\\')
+  const okDir = pathsStore.paths.ok.replace(/\//g, '\\')
   os.execCommand(`explorer "${okDir}\\ОК МП-ТАУ-001-24 Входной контроль.pdf"`)
 }
 const folder = getCurrentMonthYear()
-const baseFolder = `Системы ТАУ - Общее/Фото ТАУ контроль/${folder}`
+const baseFolder = `TAUQuality/Фото ТАУ контроль/${folder}`
 
 const qrurl = ref('')
 const createQR = async (item: SerialNumberData) => {
   errorStore.addInfo('не закрывайте QR пока фотографии не будут загружены')
+
+  // Создаём папку на Яндекс.Диске, если её ещё нет
+  try {
+    await ensureYandexFolderExists(
+      'y0__xCzv6qkqveAAhiE-Tkg5JKEohRMzx8UgKzBxwhK0dcYxPQ-v_tAJA',
+      baseFolder
+    )
+  } catch (err) {
+    console.error('Не удалось создать папку на Яндекс.Диске:', err)
+  }
+
+  // Останавливаем старый watcher, если был
+  watcherYandex.value?.stop()
+
   watcherYandex.value = createYandexDiskWatcher({
     token: 'y0__xCzv6qkqveAAhiE-Tkg5JKEohRMzx8UgKzBxwhK0dcYxPQ-v_tAJA', // OAuth токен
     path: baseFolder, // папка для отслеживания
     intervalSec: 2,
     autoDownload: true, // автоматически скачивать файлы
-    localDir: './uploads', // локальная папка
+    localDir: pathsStore.effectiveStoragePath
+      ? `${pathsStore.effectiveStoragePath}/yandex`
+      : './uploads',
     onChange: async (newFiles) => {
       newFiles.forEach((f) => {
         // гарантируем, что photos — это массив

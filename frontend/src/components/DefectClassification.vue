@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { updateDefectHistory } from '@/api/defectHistoryServices'
+import { createDefectHistory, updateDefectHistory } from '@/api/defectHistoryServices'
+import { useUserStore } from '@/stores/user'
 import { ref, watch } from 'vue'
 import type { DefectHistoryWithTypedAction } from '@/assets/interfaces'
 
@@ -61,16 +62,42 @@ watch(
 // props.defect.defectSource
 
 async function saveClassification() {
-  // TODO: API вызов для сохранения классификации
-  // await updateDefectHistory(props.defect.id, {
-  //   defectType: localClassification.value.type,
-  //   defectSource: localClassification.value.source,
-  //   actionType: 'ClassifyDefect'
-  // })
+  const type = localClassification.value.type
+  const source = localClassification.value.source
 
-  emit('update:modelValue', localClassification.value)
-  emit('update:classification')
-  isEditing.value = false
+  if (!type || !source) {
+    alert('Необходимо указать тип и источник брака')
+    return
+  }
+
+  const typeLabel = type === 'fixable' ? 'Исправимый' : 'Неисправимый'
+  const sourceLabel = source === 'production' ? 'Брак на производстве' : 'Брак поставщика'
+
+  try {
+    // Обновляем классификацию у самой записи брака (defectType / defectSource)
+    await updateDefectHistory(props.defect.id, {
+      defectType: type,
+      defectSource: source
+    })
+
+    // Создаём строку в истории (лог действия) — этап «Анализ причин»
+    await createDefectHistory({
+      componentSN: props.defect.componentSN,
+      actionType: 'AnalyzeCause',
+      status: 'on_hold',
+      description: `Классификация брака: ${typeLabel}, ${sourceLabel}`,
+      user: useUserStore().userFullName,
+      defectType: type,
+      defectSource: source
+    })
+
+    emit('update:modelValue', localClassification.value)
+    emit('update:classification')
+    isEditing.value = false
+  } catch (error) {
+    console.error('Ошибка сохранения классификации:', error)
+    alert('Не удалось сохранить классификацию. Попробуйте ещё раз.')
+  }
 }
 
 // async function saveClassification() {

@@ -1,4 +1,4 @@
-import { filesystem } from '@neutralinojs/lib'
+import { filesystem, os } from '@neutralinojs/lib'
 
 export interface YandexDiskWatcherOptions {
   token: string // OAuth токен
@@ -15,6 +15,109 @@ export interface YandexDiskFile {
   path: string
   size: number
   modified: string
+}
+
+// ─── Утилиты ──────────────────────────────────────────────────────────────────
+
+/** Проверяет, является ли путь UNC-сетевым (начинается с // или \\) */
+function isUncPath(path: string): boolean {
+  return path.startsWith('//') || path.startsWith('\\\\')
+}
+
+/**
+ * Нормализует Unix-подобный путь / в Windows-формат \\
+ * //server/share → \\\\server\\share
+ */
+function toWindowsPath(path: string): string {
+  return path.replace(/^\//, '').replace(/\//g, '\\')
+}
+
+/**
+ * Разбивает путь Яндекс.Диска на сегменты.
+ * Пример: "TAUQuality/Фото ТАУ контроль/07.2026" → ["TAUQuality", "Фото ТАУ контроль", "07.2026"]
+ */
+function splitPathSegments(yandexPath: string): string[] {
+  return yandexPath.split('/').filter(Boolean)
+}
+
+/**
+ * Создаёт папку на Яндекс.Диске (все уровни вложенности).
+ * Если папка уже существует — ошибка игнорируется.
+ */
+export async function ensureYandexFolderExists(token: string, yandexPath: string): Promise<void> {
+  const segments = splitPathSegments(yandexPath)
+  let current = ''
+
+  for (const segment of segments) {
+    current = current ? `${current}/${segment}` : segment
+    const res = await fetch(
+      `https://cloud-api.yandex.net/v1/disk/resources?path=${encodeURIComponent(current)}`,
+      {
+        method: 'PUT',
+        headers: { Authorization: `OAuth ${token}` }
+      }
+    )
+
+    if (res.ok) {
+      console.log(`📁 Папка создана: ${current}`)
+    } else if (res.status === 409) {
+      // 409 = уже существует — не ошибка
+      console.log(`📁 Папка уже существует: ${current}`)
+    } else {
+      const errBody = await res.text().catch(() => '')
+      throw new Error(`Ошибка создания папки "${current}": ${res.status} ${errBody}`)
+    }
+  }
+}
+
+/**
+ * Сохраняет файл (ArrayBuffer) по указанному пути.
+ * Если путь UNC-сетевой — использует временный локальный файл + копирование через shell,
+ * иначе пишет напрямую через Neutralino filesystem API.
+ */
+async function saveFileToLocalDir(
+  arrayBuffer: ArrayBuffer,
+  fileName: string,
+  localDir: string
+): Promise<string> {
+  if (isUncPath(localDir)) {
+    // ── UNC-путь: сохраняем во временный локальный файл, затем копируем ──
+    const tempDir = './.tmp/yandex'
+    try {
+      await filesystem.createDirectory(tempDir)
+    } catch {
+      // директория уже существует — ок
+    }
+
+    const tempPath = `${tempDir}/${fileName}`
+    await filesystem.writeBinaryFile(tempPath, arrayBuffer)
+    console.log(`💾 Временный файл: ${tempPath}`)
+
+    // Копируем в UNC через cmd copy
+    const uncPath = `${localDir.replace(/\/$/, '')}/${fileName}`
+    const winUncPath = toWindowsPath(uncPath)
+    const winTempPath = toWindowsPath(tempPath)
+
+    const cmd = `copy /Y "${winTempPath}" "${winUncPath}"`
+    console.log(`📋 Копирование: ${cmd}`)
+    await os.execCommand(cmd)
+
+    // Удаляем временный файл
+    try {
+      await filesystem.remove(tempPath)
+    } catch {
+      // не критично
+    }
+
+    console.log(`✅ Файл скопирован в UNC: ${uncPath}`)
+    return uncPath
+  } else {
+    // ── Локальный путь: пишем напрямую ──
+    const localPath = `${localDir.replace(/\/$/, '')}/${fileName}`
+    await filesystem.writeBinaryFile(localPath, arrayBuffer)
+    console.log(`✅ Файл сохранён: ${localPath}`)
+    return localPath
+  }
 }
 
 /**
@@ -58,7 +161,7 @@ export function createYandexDiskWatcher(options: YandexDiskWatcherOptions) {
     }))
   }
 
-  const downloadFile = async (remotePath: string, localPath: string) => {
+  const downloadFile = async (remotePath: string, fileName: string) => {
     const linkRes = await fetch(
       `https://cloud-api.yandex.net/v1/disk/resources/download?path=${encodeURIComponent(remotePath)}`,
       { headers: { Authorization: `OAuth ${token}` } }
@@ -70,13 +173,11 @@ export function createYandexDiskWatcher(options: YandexDiskWatcherOptions) {
     if (!fileRes.ok) throw new Error(`Ошибка загрузки файла ${remotePath}: ${fileRes.status}`)
 
     const arrayBuffer = await fileRes.arrayBuffer()
-    await filesystem.writeBinaryFile(localPath, arrayBuffer)
-    console.log(`✅ Файл сохранён: ${localPath}`)
+    await saveFileToLocalDir(arrayBuffer, fileName, localDir)
   }
 
   const poll = async () => {
     if (!isActive) return
-    // console.log('😎')
     try {
       const currentFiles = await fetchFolderState()
 
@@ -94,9 +195,7 @@ export function createYandexDiskWatcher(options: YandexDiskWatcherOptions) {
           console.log(`📥 Найдено новых файлов: ${newFiles.length}`)
           if (autoDownload) {
             for (const f of newFiles) {
-              const localPath = `${localDir}/${f.name}`
-              await downloadFile(f.path, localPath)
-              console.log('after download')
+              await downloadFile(f.path, f.name)
             }
           }
           if (onChange) await onChange(newFiles)

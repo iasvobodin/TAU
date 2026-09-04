@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive, watch, ref, onMounted, type Ref } from 'vue'
-import { appConfig } from '@/assets/utils/AppConfig'
+import { usePathsStore } from '@/stores/paths'
+const pathsStore = usePathsStore()
 
 import { genSN } from '@/assets/generateSN'
 import { createDocWithBarcodes } from '@/assets/barcodeGenerator'
@@ -32,7 +33,7 @@ watch(
 
 const specification_qty = ref('')
 const allMatch = ref(false)
-const OK_PATH = appConfig.paths.okPdf
+const OK_PATH = pathsStore.paths.okPdf
 
 type Barcodes = {
   barcode: string // znp.data.snProduct
@@ -346,7 +347,7 @@ const serialNumberInput = ref<InstanceType<typeof import('vuetify/components').V
   null
 )
 const openFile = async () => {
-  const otherDir = appConfig.paths.other.replace(/\//g, '\\')
+  const otherDir = pathsStore.paths.other.replace(/\//g, '\\')
   os.execCommand(`explorer "${otherDir}\\TSC 300 руководство пользователя.pdf"`)
 }
 onMounted(() => {

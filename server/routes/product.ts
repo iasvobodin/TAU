@@ -21,7 +21,22 @@ export default function productRoutes(app: FastifyInstance) {
               },
             },
           },
-          productionOperations: {},
+          productionOperations: {
+            select: {
+              id: true,
+              stageType: true,
+              date: true,
+              status: true,
+              user: true,
+              productSN: true,
+              comment: true,
+              checkList: true,
+              autoconReport: true,
+              usedComponents: true,
+              startTime: true,
+              endTime: true,
+            },
+          },
         },
       });
       reply.send(products);
@@ -59,7 +74,22 @@ export default function productRoutes(app: FastifyInstance) {
         checkList: true,
       },
     },
-    productionOperations: true,
+    productionOperations: {
+      select: {
+        id: true,
+        stageType: true,
+        date: true,
+        status: true,
+        user: true,
+        productSN: true,
+        comment: true,
+        checkList: true,
+        autoconReport: true,
+        usedComponents: true,
+        startTime: true,
+        endTime: true,
+      },
+    },
     components: true,
   };
 
@@ -108,7 +138,7 @@ export default function productRoutes(app: FastifyInstance) {
 
         reply.code(500).send({ error: "Внутренняя ошибка сервера" });
       }
-    }
+    },
   );
 
   app.post<{ Body: Product }>("/products", async (request, reply) => {
@@ -140,7 +170,7 @@ export default function productRoutes(app: FastifyInstance) {
       } catch (error) {
         reply.code(500).send({ error: "Internal Server Error" });
       }
-    }
+    },
   );
 
   app.delete("/products/:id", async (request, reply) => {

@@ -5,7 +5,8 @@ import { fetchSpecifications } from '@/api/specificationServices'
 import CheckListView from './CheckListView.vue'
 import DefectsView from './DefectsView.vue'
 import { openSecondWindow } from '@/assets/utils/openSecondWindow'
-import { appConfig } from '@/assets/utils/AppConfig'
+import { usePathsStore } from '@/stores/paths'
+const pathsStore = usePathsStore()
 import {
   server,
   filesystem,
@@ -14,7 +15,7 @@ import {
   window as neuWindow,
   type DirectoryEntry
 } from '@neutralinojs/lib'
-import { onMounted, shallowRef, ref, watch } from 'vue'
+import { computed, onMounted, shallowRef, ref, watch } from 'vue'
 import SettingsView from './SettingsView.vue'
 import LabelEditor from '../LabelEditor.vue'
 import SVGeditor from '../SvgEditor.vue'
@@ -22,6 +23,24 @@ import AdminLog from '../AdminLog.vue'
 import ClientsApp from '../ClientsApp.vue'
 import OrderToProduction from './OrderToProduction.vue'
 import { getClients } from '@/api/userServices'
+
+// ── Сверка рендеров (labelDiff, Фаза 6) ───────────────────────────────────────
+import { useLabelEditorStore } from '@/stores/labelEditor'
+import { renderLabelToHTML } from '@/assets/htmlRenderer'
+import { renderLabelToSVG, loadFont, FALLBACK_TEXT_METRICS_PROVIDER } from '@/assets/renderToSVG'
+import { createOpentypeTextMetricsProvider } from '@/assets/opentypeTextMetrics'
+import { resolveValue } from '@/assets/resolveValue'
+import { resolveTextProps } from '@/types/label'
+import type {
+  CommonData,
+  LabelElementProps,
+  PrintLabelElement,
+  PrintTemplateData
+} from '@/types/label'
+import { MM_TO_PX, computeTextLayout, mmToPx } from '@/assets/textLayout'
+import type { TextMetricsProvider, TextRotation } from '@/assets/textLayout'
+import { diffRenderLines, lineMaxDeltaMm } from '@/assets/labelDiff'
+import type { LabelDiffReport, RenderLine } from '@/assets/labelDiff'
 
 // import { printDocxFile } from '@/assets/printer'
 
@@ -192,13 +211,13 @@ const copyDir = async () => {
   } catch (error) {
     await filesystem.createDirectory(window.NL_PATH + '/KD')
   }
-  await filesystem.copy(appConfig.paths.kd, window.NL_PATH + '/KD')
+  await filesystem.copy(pathsStore.paths.kd, window.NL_PATH + '/KD')
 }
 
 const openFile = async () => {
   console.log(window.NL_PATH)
   // await filesystem.createDirectory(window.NL_PATH + '/app-res');
-  files.value = await filesystem.readDirectory(appConfig.paths.kd)
+  files.value = await filesystem.readDirectory(pathsStore.paths.kd)
   console.log('Content: ', files.value)
   let fileId = await filesystem.openFile(files.value[1].path)
   console.log(`ID: ${fileId}`)
@@ -434,6 +453,323 @@ const createPDFJS = async () => {
 }
 
 const tab = ref(null)
+
+// ═══ Dev-панель «Сверка рендеров» (labelDiff, Фаза 6) ════════════════════════
+// Аддитивная правка: не меняет существующие вкладки/функции DevView.
+const labelStore = useLabelEditorStore()
+
+const diffDialog = ref(false)
+const diffRunning = ref(false)
+const diffThresholdMm = ref(0.1)
+const diffShowAll = ref(true)
+const diffErrors = ref<string[]>([])
+const diffWarnings = ref<string[]>([])
+const diffReport = ref<LabelDiffReport | null>(null)
+const diffHtmlLen = ref(0)
+const diffSvgLen = ref(0)
+const diffHtmlPreviewLen = ref(0)
+const diffSvgPreviewLen = ref(0)
+const diffLabelWpx = ref(0)
+const diffLabelHpx = ref(0)
+const diffHtmlLinesCache = ref<RenderLine[]>([])
+const diffSvgLinesCache = ref<RenderLine[]>([])
+const diffTdCache = ref<PrintTemplateData | null>(null)
+
+interface OverlayLine {
+  elementId: string
+  text: string
+  rotation: number
+  left: number
+  top: number
+  width: number
+  height: number
+  cx: number
+  cy: number
+  maxDeltaMm: number
+  diverging: boolean
+}
+const diffOverlayLines = ref<OverlayLine[]>([])
+
+const diffScale = computed(() => {
+  if (!diffLabelWpx.value || !diffLabelHpx.value) return 1
+  return Math.min(1, 820 / diffLabelWpx.value, 460 / diffLabelHpx.value)
+})
+
+function openDiffDialog(): void {
+  diffDialog.value = true
+  void runDiff()
+}
+
+// Перестройка оверлея при переключении «показывать все строки»
+watch(diffShowAll, () => {
+  if (diffTdCache.value && diffHtmlLinesCache.value.length) {
+    diffOverlayLines.value = buildOverlay(
+      diffTdCache.value,
+      diffHtmlLinesCache.value,
+      diffSvgLinesCache.value,
+      diffThresholdMm.value,
+      diffShowAll.value
+    )
+  }
+})
+
+function buildTemplateDataFromStore(): PrintTemplateData {
+  const els = labelStore.elements
+  return {
+    positions: { ...labelStore.positions },
+    elements: Object.fromEntries(
+      Object.entries(els).map(([id, el]) => [
+        id,
+        {
+          id: el.id,
+          type: el.type,
+          dataField: el.dataField,
+          props: { ...(el.props as PrintLabelElement['props']) }
+        }
+      ])
+    ),
+    labelSize: { ...labelStore.labelSize },
+    labelBorder: labelStore.labelBorder ? { ...labelStore.labelBorder } : undefined
+  }
+}
+
+async function resolveProvider(fontFamily: string): Promise<TextMetricsProvider> {
+  try {
+    const font = await loadFont(fontFamily)
+    return font ? createOpentypeTextMetricsProvider(font) : FALLBACK_TEXT_METRICS_PROVIDER
+  } catch (e) {
+    console.warn('[DevView.labelDiff] loadFont:', e)
+    return FALLBACK_TEXT_METRICS_PROVIDER
+  }
+}
+
+function parsePx(style: string, prop: string): number {
+  const m = style.match(new RegExp(prop + ':([-\\d.]+)px'))
+  return m ? parseFloat(m[1]) : 0
+}
+
+// HTML-слой: парсинг реального выхода htmlRenderer (строки — явные <div> с
+// white-space:pre). Если рендер/парсинг недоступен (шрифты/fs/Neutralino) —
+// фолбэк на ту же раскладку computeTextLayout, что использует SVG-рендерер.
+async function buildHtmlLayer(
+  td: PrintTemplateData,
+  data: CommonData,
+  serial: string
+): Promise<RenderLine[]> {
+  try {
+    const htmlStr = await renderLabelToHTML(td, data, serial)
+    const doc = new DOMParser().parseFromString(htmlStr, 'text/html')
+    const lineDivs = Array.from(doc.querySelectorAll('div')).filter((d) =>
+      (d.getAttribute('style') ?? '').includes('white-space:pre')
+    )
+    const textEls = Object.entries(td.elements).filter(([, el]) => el.type === 'text')
+    const lines: RenderLine[] = []
+    let divIdx = 0
+    for (const [id, el] of textEls) {
+      const pos = td.positions[id]
+      if (!pos) continue
+      const tp = resolveTextProps(el.props as LabelElementProps)
+      const rotation = (el.props.textRotation ?? 0) as TextRotation
+      const provider = await resolveProvider(tp.fontFamily)
+      const value = resolveValue(el as PrintLabelElement, data, serial, td.elements)
+      // Та же раскладка, что и внутри htmlRenderer → число строк и lineHeight
+      const layout = computeTextLayout({
+        text: value || ' ',
+        tp,
+        blockWmm: pos.w,
+        blockHmm: pos.h,
+        textRotation: rotation,
+        provider
+      })
+      for (let i = 0; i < layout.lines.length; i++) {
+        const div = lineDivs[divIdx++]
+        if (!div) break
+        const style = div.getAttribute('style') ?? ''
+        lines.push({
+          elementId: id,
+          text: div.textContent ?? '',
+          xPx: parsePx(style, 'left'),
+          yPx: parsePx(style, 'top'),
+          widthPx: parsePx(style, 'width'),
+          heightPx: layout.lineHeightPx,
+          rotation,
+          layerId: el.props.tableCellMeta?.tableId
+        })
+      }
+    }
+    return lines
+  } catch (e) {
+    diffWarnings.value.push(
+      'HTML-парсинг недоступен, HTML-слой построен из computeTextLayout: ' + (e as Error).message
+    )
+    return buildComputedLayer(td, data, serial)
+  }
+}
+
+// SVG-слой: та же раскладка computeTextLayout, которую использует renderToSVG
+// (SVG-пути не несут текста/координат для обратного парсинга, поэтому слой
+// реконструируется из единого алгоритма — это и есть выход SVG-рендерера).
+async function buildComputedLayer(
+  td: PrintTemplateData,
+  data: CommonData,
+  serial: string
+): Promise<RenderLine[]> {
+  const lines: RenderLine[] = []
+  for (const [id, el] of Object.entries(td.elements)) {
+    if (el.type !== 'text') continue
+    const pos = td.positions[id]
+    if (!pos) continue
+    const tp = resolveTextProps(el.props as LabelElementProps)
+    const rotation = (el.props.textRotation ?? 0) as TextRotation
+    const provider = await resolveProvider(tp.fontFamily)
+    const value = resolveValue(el as PrintLabelElement, data, serial, td.elements)
+    const layout = computeTextLayout({
+      text: value || ' ',
+      tp,
+      blockWmm: pos.w,
+      blockHmm: pos.h,
+      textRotation: rotation,
+      provider
+    })
+    const asc = provider.ascenderPx(tp.fontSize)
+    for (const ln of layout.lines) {
+      lines.push({
+        elementId: id,
+        text: ln.text || '\u00A0',
+        xPx: ln.xPx,
+        yPx: ln.baselineYPx - asc,
+        widthPx: ln.widthPx,
+        heightPx: layout.lineHeightPx,
+        rotation,
+        layerId: el.props.tableCellMeta?.tableId
+      })
+    }
+  }
+  return lines
+}
+
+// Оверлей: строки HTML-слоя в координатах этикетки (мм → px), с поворотом вокруг
+// центра блока (та же система координат, что у LabelCanvas dim-overlay/канваса).
+// Красные рамки — строки, где delta > порога; серые — остальные (если showAll).
+function buildOverlay(
+  td: PrintTemplateData,
+  htmlLines: RenderLine[],
+  svgLines: RenderLine[],
+  thresholdMm: number,
+  showAll: boolean
+): OverlayLine[] {
+  const svgByEl = new Map<string, RenderLine[]>()
+  for (const l of svgLines) {
+    const arr = svgByEl.get(l.elementId)
+    if (arr) arr.push(l)
+    else svgByEl.set(l.elementId, [l])
+  }
+  const htmlByEl = new Map<string, RenderLine[]>()
+  for (const l of htmlLines) {
+    const arr = htmlByEl.get(l.elementId)
+    if (arr) arr.push(l)
+    else htmlByEl.set(l.elementId, [l])
+  }
+
+  const boxes: OverlayLine[] = []
+  for (const [id, hArr] of htmlByEl) {
+    const pos = td.positions[id]
+    const el = td.elements[id]
+    if (!pos || !el) continue
+    const tp = resolveTextProps(el.props as LabelElementProps)
+    const ox = pos.x * MM_TO_PX + mmToPx(tp.paddingLeft)
+    const oy = pos.y * MM_TO_PX + mmToPx(tp.paddingTop)
+    const cx = pos.x * MM_TO_PX + (pos.w * MM_TO_PX) / 2
+    const cy = pos.y * MM_TO_PX + (pos.h * MM_TO_PX) / 2
+    const rotation = (el.props.textRotation ?? 0) as number
+    const sArr = svgByEl.get(id) ?? []
+    for (let i = 0; i < hArr.length; i++) {
+      const h = hArr[i]
+      const s = sArr[i]
+      const maxDeltaMm = lineMaxDeltaMm(h, s)
+      const diverging = maxDeltaMm > thresholdMm
+      if (!diverging && !showAll) continue
+      boxes.push({
+        elementId: id,
+        text: h.text,
+        rotation,
+        left: ox + h.xPx,
+        top: oy + h.yPx,
+        width: h.widthPx,
+        height: h.heightPx ?? 8,
+        cx,
+        cy,
+        maxDeltaMm,
+        diverging
+      })
+    }
+  }
+  return boxes
+}
+
+async function runDiff(): Promise<void> {
+  diffRunning.value = true
+  diffErrors.value = []
+  diffWarnings.value = []
+  diffReport.value = null
+  diffOverlayLines.value = []
+  try {
+    const td = buildTemplateDataFromStore()
+    const data: CommonData = { ...(labelStore.batchCommonData as CommonData) }
+
+    const wMM = td.labelSize.unit === 'mm' ? td.labelSize.width : td.labelSize.width / MM_TO_PX
+    const hMM = td.labelSize.unit === 'mm' ? td.labelSize.height : td.labelSize.height / MM_TO_PX
+    diffLabelWpx.value = wMM * MM_TO_PX
+    diffLabelHpx.value = hMM * MM_TO_PX
+
+    const textCount = Object.values(td.elements).filter((el) => el.type === 'text').length
+    if (textCount === 0) {
+      diffErrors.value.push(
+        'В шаблоне нет текстовых элементов — нечего сверять. Откройте редактор этикеток и добавьте текст.'
+      )
+    }
+
+    // 1) Реальные выходы рендереров (контроль пайплайна) — каждый в try/catch,
+    // чтобы сбой одного пути (шрифты/fs/Neutralino) не ронял сверку.
+    try {
+      diffHtmlPreviewLen.value = (await renderLabelToHTML(td, data, '')).length
+    } catch (e) {
+      diffErrors.value.push('HTML-рендер: ' + (e as Error).message)
+    }
+    try {
+      diffSvgPreviewLen.value = (await renderLabelToSVG(td, data, '', false)).length
+    } catch (e) {
+      diffErrors.value.push('SVG-рендер: ' + (e as Error).message)
+    }
+
+    // 2) Слои строк из одного buildTemplateData()
+    const htmlLines = await buildHtmlLayer(td, data, '')
+    const svgLines = await buildComputedLayer(td, data, '')
+    diffHtmlLinesCache.value = htmlLines
+    diffSvgLinesCache.value = svgLines
+    diffTdCache.value = td
+    diffHtmlLen.value = htmlLines.length
+    diffSvgLen.value = svgLines.length
+
+    // 3) Сверка с параметризуемым порогом
+    diffReport.value = diffRenderLines(htmlLines, svgLines, {
+      thresholdMm: diffThresholdMm.value
+    })
+
+    // 4) Оверлей
+    diffOverlayLines.value = buildOverlay(
+      td,
+      htmlLines,
+      svgLines,
+      diffThresholdMm.value,
+      diffShowAll.value
+    )
+  } catch (e) {
+    diffErrors.value.push('Сверка прервана: ' + (e as Error).message)
+  } finally {
+    diffRunning.value = false
+  }
+}
 </script>
 
 <template>
@@ -482,6 +818,11 @@ const tab = ref(null)
         <v-btn block color="gray" @click="selectComponent('svg')">SVG editor</v-btn>
       </v-col>
     </v-row>
+    <v-row>
+      <v-col cols="12">
+        <v-btn block color="primary" @click="openDiffDialog"> Сверка рендеров (labelDiff) </v-btn>
+      </v-col>
+    </v-row>
   </v-container>
 
   <v-dialog :fullscreen="true" v-model="dialog" width="100%">
@@ -496,6 +837,173 @@ const tab = ref(null)
       <template v-slot:actions> </template>
     </v-card>
   </v-dialog>
+
+  <!-- ═══ Dev-панель «Сверка рендеров» (labelDiff, Фаза 6) ═══ -->
+  <v-dialog v-model="diffDialog" width="1180" scrollable>
+    <v-card>
+      <v-toolbar height="40" color="primary" density="compact">
+        <v-toolbar-title class="text-subtitle-1"
+          >Сверка рендеров (HTML ↔ SVG · labelDiff)</v-toolbar-title
+        >
+        <v-spacer></v-spacer>
+        <v-btn icon @click="diffDialog = false"><v-icon>mdi-close</v-icon></v-btn>
+      </v-toolbar>
+      <v-card-text>
+        <v-row align="center">
+          <v-col cols="2">
+            <v-text-field
+              v-model.number="diffThresholdMm"
+              type="number"
+              step="0.01"
+              min="0"
+              label="Порог, мм"
+              density="compact"
+              hide-details
+              @change="runDiff"
+            ></v-text-field>
+          </v-col>
+          <v-col cols="3">
+            <v-switch
+              v-model="diffShowAll"
+              label="Все строки"
+              density="compact"
+              hide-details
+            ></v-switch>
+          </v-col>
+          <v-col cols="4" class="text-caption grey--text text--darken-1">
+            Порог по умолчанию 0.1 мм (допуск контракта). Сверка из одного buildTemplateData().
+          </v-col>
+          <v-col cols="3" class="text-right">
+            <v-btn color="primary" :loading="diffRunning" @click="runDiff">Сверка</v-btn>
+          </v-col>
+        </v-row>
+
+        <v-alert v-if="diffErrors.length" type="error" density="compact" class="mt-2">
+          <div v-for="(e, i) in diffErrors" :key="i">{{ e }}</div>
+        </v-alert>
+        <v-alert v-if="diffWarnings.length" type="warning" density="compact" class="mt-2">
+          <div v-for="(w, i) in diffWarnings" :key="i">{{ w }}</div>
+        </v-alert>
+
+        <v-alert
+          v-if="diffReport"
+          :type="diffReport.aggregate.exceedsThreshold ? 'error' : 'success'"
+          density="compact"
+          class="mt-2"
+        >
+          Вердикт: <b>{{ diffReport.aggregate.exceedsThreshold ? 'FAIL' : 'PASS' }}</b> · max delta:
+          {{ diffReport.aggregate.maxDeltaMm.toFixed(4) }} мм (порог {{ diffThresholdMm }} мм) ·
+          строк: {{ diffReport.aggregate.comparedLines }} / {{ diffReport.aggregate.totalLines }} ·
+          расхождений: {{ diffReport.discrepancies.length }}
+        </v-alert>
+
+        <v-row class="mt-3">
+          <v-col cols="5">
+            <div
+              class="diff-canvas-wrap"
+              :style="{
+                width: diffLabelWpx * diffScale + 'px',
+                height: diffLabelHpx * diffScale + 'px'
+              }"
+            >
+              <div
+                class="diff-canvas"
+                :style="{
+                  width: diffLabelWpx + 'px',
+                  height: diffLabelHpx + 'px',
+                  transform: 'scale(' + diffScale + ')',
+                  transformOrigin: 'top left'
+                }"
+              >
+                <div
+                  v-for="(box, i) in diffOverlayLines"
+                  :key="i"
+                  class="diff-box-wrap"
+                  :style="{
+                    left: box.cx + 'px',
+                    top: box.cy + 'px',
+                    transform: box.rotation ? 'rotate(' + box.rotation + 'deg)' : undefined
+                  }"
+                >
+                  <div
+                    class="diff-box"
+                    :class="box.diverging ? 'diff-box--bad' : 'diff-box--ok'"
+                    :style="{
+                      left: box.left - box.cx + 'px',
+                      top: box.top - box.cy + 'px',
+                      width: box.width + 'px',
+                      height: box.height + 'px'
+                    }"
+                    :title="
+                      '[' +
+                      box.elementId +
+                      '] ' +
+                      box.text +
+                      ' · Δ ' +
+                      box.maxDeltaMm.toFixed(4) +
+                      ' мм'
+                    "
+                  ></div>
+                </div>
+                <div v-if="diffReport && !diffOverlayLines.length" class="diff-empty">
+                  Нет строк для подсветки
+                </div>
+              </div>
+            </div>
+            <div class="text-caption mt-1">
+              Оверлей в системе координат этикетки (мм → px, масштаб
+              {{ diffScale.toFixed(2) }}). Красные рамки — строки с delta >
+              {{ diffThresholdMm }} мм.
+            </div>
+          </v-col>
+          <v-col cols="7">
+            <div class="diff-report">
+              <div v-if="!diffReport" class="diff-empty">Нажмите «Сверка»</div>
+              <table v-else class="diff-table">
+                <thead>
+                  <tr>
+                    <th>Элемент</th>
+                    <th>Строка</th>
+                    <th>Ось</th>
+                    <th>expected</th>
+                    <th>actual</th>
+                    <th>Δ px</th>
+                    <th>Δ мм</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="(d, i) in diffReport.discrepancies"
+                    :key="i"
+                    :class="{
+                      'row--bad':
+                        d.deltaMm > diffThresholdMm || d.axis === 'text' || d.axis === 'lines'
+                    }"
+                  >
+                    <td>{{ d.elementId }}</td>
+                    <td>{{ d.lineText }}</td>
+                    <td>{{ d.axis }}</td>
+                    <td>{{ d.expected }}</td>
+                    <td>{{ d.actual }}</td>
+                    <td>{{ d.deltaPx.toFixed(3) }}</td>
+                    <td>{{ d.deltaMm.toFixed(4) }}</td>
+                  </tr>
+                  <tr v-if="!diffReport.discrepancies.length">
+                    <td colspan="7" class="diff-empty">Расхождений нет — слои совпадают</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="text-caption mt-1">
+              HTML-слой: {{ diffHtmlLen }} строк · SVG-слой: {{ diffSvgLen }} строк · HTML-строка:
+              {{ diffHtmlPreviewLen }} симв. · SVG-строка: {{ diffSvgPreviewLen }} симв.
+            </div>
+          </v-col>
+        </v-row>
+      </v-card-text>
+    </v-card>
+  </v-dialog>
+
   <ClientsApp />
   <AdminLog />
   <v-btn @click="openSecondWindow('path', 'Редактор этикеток', '', '/about', 'labelEditor')">
@@ -512,3 +1020,70 @@ const tab = ref(null)
 
   <!-- <button @click="print">printDocxFile</button> -->
 </template>
+
+<style scoped>
+.diff-canvas-wrap {
+  position: relative;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #b0b0b0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+.diff-canvas {
+  position: relative;
+  background:
+    linear-gradient(#f5f5f5 1px, transparent 1px),
+    linear-gradient(90deg, #f5f5f5 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+.diff-box-wrap {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.diff-box {
+  position: absolute;
+  border: 1.5px solid #f44336;
+  box-sizing: border-box;
+  background: rgba(244, 67, 54, 0.12);
+}
+.diff-box--bad {
+  border-color: #f44336;
+  background: rgba(244, 67, 54, 0.18);
+}
+.diff-box--ok {
+  border-color: rgba(76, 175, 80, 0.55);
+  background: rgba(76, 175, 80, 0.08);
+}
+.diff-empty {
+  padding: 12px;
+  text-align: center;
+  color: #777;
+}
+.diff-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.diff-table th,
+.diff-table td {
+  border: 1px solid #e0e0e0;
+  padding: 3px 6px;
+  text-align: left;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.diff-table thead th {
+  background: #f5f5f5;
+  position: sticky;
+  top: 0;
+}
+.diff-table .row--bad {
+  background: rgba(244, 67, 54, 0.08);
+}
+.diff-report {
+  max-height: 460px;
+  overflow: auto;
+  border: 1px solid #e0e0e0;
+}
+</style>

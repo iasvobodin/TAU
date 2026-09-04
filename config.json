@@ -1,6 +1,7 @@
 {
     "$schema": "./config.schema.json",
     "version": "1.0.0",
+    "updatesPath": "//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Софт/updates",
     "paths": {
         "ok": "//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Операционные карты",
         "okPdf": "//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Операционные карты/ОК PDF",
@@ -10,6 +11,11 @@
         "other": "//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Софт/прикладные документы",
         "convertFolder": "./convertFolder",
         "resourcesPath": "/frontend/dist/"
+    },
+    "sharedPaths": {
+        "convertFolder": "//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Софт/convertFolder",
+        "storage": "//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Софт/storage",
+        "tmp": "//rucekaspinffs05.metran.local/Dept-MP/Production/Internal/Продукты/ТАУ/Софт/tmp"
     },
     "services": {
         "wsUrl": "10.69.19.59:3000"

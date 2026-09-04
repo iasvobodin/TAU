@@ -35,3 +35,9 @@ replacements.txt
 server/prisma-backup 02.06.2026.json
 server/prisma-backup 20.10.json
 server/CHIR.ts
+
+# Тестовая папка с файлами импорта DeltaV
+/Новая папка/
+
+# Рабочие заметки и планы разработки
+/plans/

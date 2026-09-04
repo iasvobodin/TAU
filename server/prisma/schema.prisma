@@ -64,6 +64,7 @@ model ProductionOperation {
   productSN      String?
   comment        String?    @db.Text
   checkList      String?    @db.Text
+  autoconReport  String?    @db.Text
   productId      String?
   componentId    String?
   usedComponents String?

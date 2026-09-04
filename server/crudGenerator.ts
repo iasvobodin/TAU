@@ -11,6 +11,16 @@ interface CrudOptions {
   uniqueKey: string | number;
 }
 
+/**
+ * Приводит значение параметра маршрута к типу, ожидаемому Prisma.
+ * req.params всегда содержит строки; числовые ключи (например, id) Prisma
+ * ожидает как Int, поэтому «числовые» значения приводим к Number, а
+ * строковые ключи (например, partNumber) оставляем строками.
+ */
+function coerceWhereValue(value: string): string | number {
+  return /^\d+$/.test(value) ? Number(value) : value;
+}
+
 export function createCrudRoutes({
   app,
   modelName,
@@ -25,7 +35,10 @@ export function createCrudRoutes({
   });
 
   app.get(`${path}/:${uniqueKey}`, async (req, reply) => {
-    const data = await model.findUnique({ where: req.params });
+    const { [uniqueKey]: rawValue } = req.params as Record<string, string>;
+    const data = await model.findUnique({
+      where: { [uniqueKey]: coerceWhereValue(rawValue) },
+    });
     if (data) {
       reply.send(data);
     } else {
@@ -44,7 +57,7 @@ export function createCrudRoutes({
     const result = await model.update({
       where: {
         // Приводим к числу только само значение ID
-        [uniqueKey]: Number(id),
+        [uniqueKey]: coerceWhereValue(id),
       },
       data: req.body,
     });
@@ -52,7 +65,8 @@ export function createCrudRoutes({
   });
 
   app.delete(`${path}/:${uniqueKey}`, async (req, reply) => {
-    await model.delete({ where: req.params });
+    const { [uniqueKey]: rawValue } = req.params as Record<string, string>;
+    await model.delete({ where: { [uniqueKey]: coerceWhereValue(rawValue) } });
     reply.code(204).send();
   });
 }

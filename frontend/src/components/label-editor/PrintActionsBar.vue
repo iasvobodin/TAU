@@ -1,14 +1,24 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useLabelEditorStore } from '@/stores/labelEditor'
+import PrintSettingsDialog from './PrintSettingsDialog.vue'
 
 const store = useLabelEditorStore()
-const { svgRenderEnabled, batchPrintEnabled, iterableFields, iterableCounts, lastSavedPath } =
-  storeToRefs(store)
+const {
+  svgRenderEnabled,
+  batchPrintEnabled,
+  iterableFields,
+  iterableCounts,
+  lastSavedLabelPath,
+  showElementBorders,
+  printLayoutConfig
+} = storeToRefs(store)
+
+const showSettings = ref(false)
 
 const currentFileName = computed(() =>
-  lastSavedPath.value ? (lastSavedPath.value.split(/[\\\/]/).pop() ?? null) : null
+  lastSavedLabelPath.value ? (lastSavedLabelPath.value.split(/[\\\/]/).pop() ?? null) : null
 )
 
 // Количество этикеток в пакетной печати (из первого итерируемого barcode)
@@ -17,6 +27,16 @@ const batchCount = computed(() => {
   if (!fields.length) return 0
   const firstField = fields[0]
   return iterableCounts.value[firstField] ?? 0
+})
+
+const hasMultiLabel = computed(() => printLayoutConfig.value.enabled)
+
+// Если multi-label включён, показываем количество этикеток на листе
+const multiLabelHint = computed(() => {
+  const c = printLayoutConfig.value
+  if (!c.enabled) return ''
+  const total = c.cols * c.rows
+  return `${c.sheetWidth}×${c.sheetHeight} • ${total} шт/лист`
 })
 </script>
 
@@ -33,6 +53,28 @@ const batchCount = computed(() => {
     </div>
 
     <div class="pa-spacer" />
+
+    <!-- ── Multi-label hint ── -->
+    <span v-if="hasMultiLabel" class="pa-multi-hint">{{ multiLabelHint }}</span>
+
+    <!-- ── Границы элементов (чертёжный режим) ── -->
+    <v-tooltip
+      location="top"
+      :text="
+        showElementBorders ? 'Скрыть границы элементов' : 'Показать границы элементов с размерами'
+      "
+    >
+      <template #activator="{ props: tp }">
+        <button
+          v-bind="tp"
+          :class="['pa-btn', { 'pa-btn--active': showElementBorders }]"
+          @click="showElementBorders = !showElementBorders"
+        >
+          <v-icon size="13">mdi-border-all-variant</v-icon>
+          <span>Границы</span>
+        </button>
+      </template>
+    </v-tooltip>
 
     <!-- SVG toggle -->
     <v-tooltip
@@ -63,11 +105,27 @@ const batchCount = computed(() => {
 
     <div class="pa-divider" />
 
+    <!-- ⚙ Настройки печати -->
+    <v-tooltip location="top" text="Настройки печати">
+      <template #activator="{ props: tp }">
+        <button
+          v-bind="tp"
+          :class="['pa-btn', { 'pa-btn--active': hasMultiLabel }]"
+          @click="showSettings = true"
+        >
+          <v-icon size="14">mdi-cog-outline</v-icon>
+        </button>
+      </template>
+    </v-tooltip>
+
     <!-- Печать -->
     <button class="pa-print-btn" @click="store.printLabels">
       <v-icon size="14">mdi-printer</v-icon>
       <span>{{ batchPrintEnabled ? `Печать (${batchCount} шт.)` : 'Печать' }}</span>
     </button>
+
+    <!-- Диалог настроек -->
+    <PrintSettingsDialog v-if="showSettings" @close="showSettings = false" />
   </div>
 </template>
 
@@ -95,6 +153,17 @@ const batchCount = computed(() => {
   height: 18px;
   background: #d0d4d9;
   flex-shrink: 0;
+}
+
+/* ── Multi-label hint ─────────────────────────────────────────────────────── */
+.pa-multi-hint {
+  font-size: 10px;
+  color: #3a8fd6;
+  background: #e8f0fb;
+  padding: 2px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+  border: 1px solid #c8ddf0;
 }
 
 /* ── File indicator ─────────────────────────────────────────────────────── */

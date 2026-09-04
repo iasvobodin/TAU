@@ -1,0 +1,17 @@
+{
+    "latest": "1.0.1",
+    "versions": [
+        {
+            "version": "1.0.0",
+            "published": "2026-06-01T10:00:00Z",
+            "changelog": "- Первый публичный релиз",
+            "critical": false
+        },
+        {
+            "version": "1.0.1",
+            "published": "2026-06-18T14:30:00Z",
+            "changelog": "- Новая система авторизации\n- Исправлены ошибки WebSocket",
+            "critical": false
+        }
+    ]
+}

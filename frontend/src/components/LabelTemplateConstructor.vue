@@ -5,6 +5,7 @@ import { GridLayout as GridLayoutComponent, GridItem } from 'vue3-grid-layout'
 import bwipjs from 'bwip-js'
 import { storage } from '@neutralinojs/lib'
 import { LabelPrinterMulty } from '@/assets/printLabelMultyСopy'
+import { MM_TO_PX } from '@/assets/textLayout'
 // ===== Types =====
 type ElementType = 'text' | 'barcode' | 'image'
 type BarcodeType = 'code128' | 'datamatrix'
@@ -76,8 +77,7 @@ const fieldCounters = ref({
   custom: 0
 })
 
-// Константы для конвертации
-const MM_TO_PX = 3.78
+// Константы для конвертации (единый MM_TO_PX — импорт из textLayout.ts)
 
 // ===== Computed =====
 const labelSizeInPx = computed(() => {
